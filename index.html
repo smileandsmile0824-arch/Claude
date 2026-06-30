@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude's Adventure - 横スクロールゲーム</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0f0f1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Segoe UI', sans-serif;
+      color: #e0e0ff;
+      overflow: hidden;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 12px;
+      background: linear-gradient(90deg, #a855f7, #6366f1, #22d3ee);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: none;
+    }
+    #ui {
+      display: flex;
+      gap: 32px;
+      margin-bottom: 10px;
+      font-size: 1rem;
+      color: #c4b5fd;
+    }
+    #ui span { font-weight: bold; color: #e0d4ff; }
+    canvas {
+      border: 2px solid #4c1d95;
+      border-radius: 8px;
+      box-shadow: 0 0 40px #7c3aed44;
+      display: block;
+    }
+    #controls {
+      margin-top: 12px;
+      font-size: 0.82rem;
+      color: #7c6fa0;
+      text-align: center;
+    }
+    #message {
+      position: absolute;
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: #e9d5ff;
+      text-shadow: 0 0 20px #a855f7;
+      pointer-events: none;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>✨ Claude's Adventure</h1>
+  <div id="ui">
+    <div>スコア: <span id="score">0</span></div>
+    <div>ハイスコア: <span id="highscore">0</span></div>
+    <div>ライフ: <span id="lives">❤️❤️❤️</span></div>
+    <div>レベル: <span id="level">1</span></div>
+  </div>
+  <div id="message"></div>
+  <canvas id="gameCanvas" width="800" height="420"></canvas>
+  <div id="controls">
+    ← → : 移動 &nbsp;|&nbsp; ↑ / Space : ジャンプ &nbsp;|&nbsp; R : リスタート &nbsp;|&nbsp; P : ポーズ
+    <br>スペースキーを押してゲームスタート！
+  </div>
+
+  <script>
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // ── State ──────────────────────────────────────────────
+  let state = 'start'; // start | playing | paused | dead | gameover | levelup
+  let score = 0, highScore = 0, lives = 3, level = 1;
+  let frameCount = 0, lastTime = 0;
+
+  // ── Input ──────────────────────────────────────────────
+  const keys = {};
+  document.addEventListener('keydown', e => {
+    keys[e.key] = true;
+    if (e.key === ' ' || e.key === 'ArrowUp') e.preventDefault();
+    if ((e.key === ' ' || e.key === 'Enter') && state === 'start') startGame();
+    if (e.key === 'r' || e.key === 'R') restartGame();
+    if ((e.key === 'p' || e.key === 'P') && state === 'playing') { state = 'paused'; showMessage('⏸ ポーズ'); }
+    else if ((e.key === 'p' || e.key === 'P') && state === 'paused') { state = 'playing'; hideMessage(); }
+  });
+  document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+  // ── World ──────────────────────────────────────────────
+  const GRAVITY = 0.55, GROUND_Y = 340;
+  let scrollX = 0, scrollSpeed = 2.5;
+
+  // ── Claude Player ──────────────────────────────────────
+  const player = {
+    x: 100, y: GROUND_Y, w: 48, h: 56,
+    vx: 0, vy: 0,
+    onGround: false, jumping: false,
+    jumpCount: 0, maxJumps: 2,
+    invincible: 0, blinkTimer: 0,
+    frame: 0, frameTimer: 0,
+
+    reset() {
+      this.x = 100; this.y = GROUND_Y; this.vx = 0; this.vy = 0;
+      this.onGround = false; this.jumping = false; this.jumpCount = 0;
+      this.invincible = 0; this.blinkTimer = 0;
+    },
+
+    update() {
+      // Horizontal movement
+      if (keys['ArrowLeft'] || keys['a']) this.vx = -4.5;
+      else if (keys['ArrowRight'] || keys['d']) this.vx = 4.5;
+      else this.vx = 0;
+
+      // Jump
+      if ((keys['ArrowUp'] || keys[' '] || keys['w']) && !this.jumping) {
+        if (this.jumpCount < this.maxJumps) {
+          this.vy = -13.5;
+          this.jumpCount++;
+          this.jumping = true;
+        }
+      }
+      if (!keys['ArrowUp'] && !keys[' '] && !keys['w']) {
+        this.jumping = false;
+      }
+
+      this.vy += GRAVITY;
+      this.x += this.vx;
+      this.y += this.vy;
+
+      // Ground collision
+      if (this.y >= GROUND_Y) {
+        this.y = GROUND_Y;
+        this.vy = 0;
+        this.onGround = true;
+        this.jumpCount = 0;
+      } else { this.onGround = false; }
+
+      // Clamp x
+      if (this.x < 0) this.x = 0;
+      if (this.x > canvas.width - this.w) this.x = canvas.width - this.w;
+
+      // Platform collision
+      for (const p of platforms) {
+        const px = p.x - scrollX;
+        if (this.x + this.w > px && this.x < px + p.w &&
+            this.y + this.h > p.y && this.y + this.h < p.y + p.h + 12 &&
+            this.vy >= 0) {
+          this.y = p.y - this.h;
+          this.vy = 0;
+          this.onGround = true;
+          this.jumpCount = 0;
+        }
+      }
+
+      // Invincibility countdown
+      if (this.invincible > 0) this.invincible--;
+      this.blinkTimer++;
+
+      // Animation
+      this.frameTimer++;
+      if (this.frameTimer > 8) { this.frame = (this.frame + 1) % 4; this.frameTimer = 0; }
+    },
+
+    draw() {
+      if (this.invincible > 0 && Math.floor(this.blinkTimer / 4) % 2 === 0) return;
+      drawClaude(this.x, this.y, this.w, this.h, this.frame, this.onGround, this.vx);
+    }
+  };
+
+  // ── Draw Claude character ──────────────────────────────
+  function drawClaude(x, y, w, h, frame, onGround, vx) {
+    ctx.save();
+    // Body (rounded rect)
+    const bodyColor = '#7c3aed';
+    const faceColor = '#f3e8ff';
+    // Legs
+    const legOffset = onGround ? Math.sin(frame * Math.PI / 2) * 6 : 0;
+    ctx.fillStyle = '#5b21b6';
+    ctx.beginPath(); ctx.roundRect(x + 8, y + h - 16, 12, 16, 4); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(x + w - 20, y + h - 16, 12, 16, 4); ctx.fill();
+    // Shoes
+    ctx.fillStyle = '#1e1b4b';
+    ctx.beginPath(); ctx.ellipse(x + 14, y + h, 9, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + w - 14, y + h, 9, 5, 0, 0, Math.PI * 2); ctx.fill();
+    // Body
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath(); ctx.roundRect(x + 4, y + 18, w - 8, h - 22, 8); ctx.fill();
+    // Gradient overlay
+    const grad = ctx.createLinearGradient(x, y, x + w, y + h);
+    grad.addColorStop(0, 'rgba(167,139,250,0.3)');
+    grad.addColorStop(1, 'rgba(109,40,217,0.1)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.roundRect(x + 4, y + 18, w - 8, h - 22, 8); ctx.fill();
+    // Arms
+    const armSwing = onGround ? Math.sin(frame * Math.PI / 2) * 5 : 3;
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath(); ctx.roundRect(x - 2, y + 22 - armSwing, 10, 20, 5); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(x + w - 8, y + 22 + armSwing, 10, 20, 5); ctx.fill();
+    // Head
+    ctx.fillStyle = faceColor;
+    ctx.beginPath(); ctx.roundRect(x + 6, y - 2, w - 12, 26, 12); ctx.fill();
+    // Eyes
+    const eyeY = y + 8;
+    ctx.fillStyle = '#6d28d9';
+    ctx.beginPath(); ctx.ellipse(x + 16, eyeY, 4, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + w - 16, eyeY, 4, 5, 0, 0, Math.PI * 2); ctx.fill();
+    // Eye shine
+    ctx.fillStyle = 'white';
+    ctx.beginPath(); ctx.ellipse(x + 17.5, eyeY - 1.5, 1.5, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + w - 14.5, eyeY - 1.5, 1.5, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+    // Smile
+    ctx.strokeStyle = '#6d28d9';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x + w / 2, y + 14, 5, 0.1, Math.PI - 0.1);
+    ctx.stroke();
+    // "A" logo on chest
+    ctx.fillStyle = '#e9d5ff';
+    ctx.font = `bold ${Math.floor(w * 0.4)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('A', x + w / 2, y + h - 22);
+    // Sparkle when jumping
+    if (!onGround) {
+      ctx.fillStyle = '#a78bfa88';
+      for (let i = 0; i < 3; i++) {
+        const sx = x + 10 + i * 14, sy = y + h + 4;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  // ── Platforms ──────────────────────────────────────────
+  let platforms = [];
+  let nextPlatformX = 900;
+
+  function spawnPlatform() {
+    const w = 80 + Math.random() * 120;
+    const y = 200 + Math.random() * 100;
+    platforms.push({ x: nextPlatformX + scrollX, y, w, h: 18, hasGem: Math.random() < 0.4 });
+    nextPlatformX += w + 120 + Math.random() * 160;
+  }
+
+  function initPlatforms() {
+    platforms = [];
+    nextPlatformX = 500;
+    for (let i = 0; i < 6; i++) spawnPlatform();
+  }
+
+  function updatePlatforms() {
+    // Remove off-screen
+    platforms = platforms.filter(p => p.x - scrollX > -300);
+    // Spawn new
+    while (nextPlatformX < 1200) spawnPlatform();
+  }
+
+  function drawPlatforms() {
+    for (const p of platforms) {
+      const px = p.x - scrollX;
+      // Shadow
+      ctx.fillStyle = '#2d1b6944';
+      ctx.beginPath(); ctx.roundRect(px + 4, p.y + 6, p.w, p.h, 6); ctx.fill();
+      // Platform body
+      const grad = ctx.createLinearGradient(px, p.y, px, p.y + p.h);
+      grad.addColorStop(0, '#7c3aed');
+      grad.addColorStop(1, '#4c1d95');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.roundRect(px, p.y, p.w, p.h, 6); ctx.fill();
+      // Top highlight
+      ctx.fillStyle = '#a78bfa55';
+      ctx.beginPath(); ctx.roundRect(px + 4, p.y + 2, p.w - 8, 4, 3); ctx.fill();
+    }
+  }
+
+  // ── Gems (collectibles) ────────────────────────────────
+  let gems = [];
+  let gemSpawnTimer = 0;
+
+  function spawnGem(x, y) {
+    gems.push({ x, y: y - 30, vy: 0, collected: false, anim: Math.random() * Math.PI * 2 });
+  }
+
+  function initGems() {
+    gems = [];
+    gemSpawnTimer = 0;
+  }
+
+  function updateGems() {
+    gemSpawnTimer++;
+    if (gemSpawnTimer > 60 - level * 3) {
+      gemSpawnTimer = 0;
+      gems.push({
+        x: scrollX + 900 + Math.random() * 200,
+        y: 220 + Math.random() * 80,
+        vy: 0, collected: false, anim: Math.random() * Math.PI * 2
+      });
+    }
+    for (const g of gems) {
+      g.anim += 0.06;
+      const gx = g.x - scrollX;
+      // Collision with player
+      if (!g.collected &&
+          Math.abs(gx + 12 - (player.x + player.w / 2)) < 28 &&
+          Math.abs(g.y + 12 - (player.y + player.h / 2)) < 28) {
+        g.collected = true;
+        score += 10 * level;
+        spawnParticles(gx, g.y, '#fbbf24', 8);
+      }
+    }
+    gems = gems.filter(g => !g.collected && g.x - scrollX > -100);
+  }
+
+  function drawGems() {
+    for (const g of gems) {
+      if (g.collected) continue;
+      const gx = g.x - scrollX;
+      const bob = Math.sin(g.anim) * 5;
+      ctx.save();
+      ctx.translate(gx + 12, g.y + 12 + bob);
+      ctx.rotate(g.anim * 0.5);
+      // Glow
+      ctx.shadowColor = '#fbbf24';
+      ctx.shadowBlur = 12;
+      // Diamond shape
+      ctx.fillStyle = '#fde68a';
+      ctx.beginPath();
+      ctx.moveTo(0, -12); ctx.lineTo(10, 0); ctx.lineTo(0, 12); ctx.lineTo(-10, 0);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#fbbf2488';
+      ctx.beginPath();
+      ctx.moveTo(-3, -8); ctx.lineTo(3, -8); ctx.lineTo(6, 0); ctx.lineTo(0, 8); ctx.lineTo(-6, 0);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // ── Obstacles (enemies) ────────────────────────────────
+  let obstacles = [];
+  let obstacleSpawnTimer = 0;
+
+  const OBSTACLE_TYPES = [
+    { name: 'bug', color: '#ef4444', w: 36, h: 36, speed: 2.5, points: 0 },
+    { name: 'glitch', color: '#f97316', w: 28, h: 44, speed: 3.5, points: 0 },
+    { name: 'error', color: '#dc2626', w: 50, h: 30, speed: 2, points: 0 },
+  ];
+
+  function spawnObstacle() {
+    const t = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
+    obstacles.push({
+      ...t,
+      x: scrollX + canvas.width + 60,
+      y: GROUND_Y + 56 - t.h,
+      anim: 0,
+      dead: false
+    });
+  }
+
+  function initObstacles() { obstacles = []; obstacleSpawnTimer = 0; }
+
+  function updateObstacles() {
+    obstacleSpawnTimer++;
+    const interval = Math.max(50, 110 - level * 8);
+    if (obstacleSpawnTimer > interval) {
+      obstacleSpawnTimer = 0;
+      spawnObstacle();
+    }
+    for (const o of obstacles) {
+      o.x -= (o.speed + level * 0.4 + scrollSpeed * 0.2);
+      o.anim += 0.12;
+      const ox = o.x - scrollX;
+      // Collision with player
+      if (!o.dead && player.invincible === 0 &&
+          ox + o.w > player.x + 6 && ox < player.x + player.w - 6 &&
+          o.y < player.y + player.h - 4 && o.y + o.h > player.y + 10) {
+        o.dead = true;
+        player.invincible = 100;
+        lives--;
+        spawnParticles(player.x + player.w / 2, player.y + player.h / 2, '#ef4444', 12);
+        updateUI();
+        if (lives <= 0) { state = 'gameover'; showMessage('GAME OVER\nRキーでリスタート'); }
+      }
+    }
+    obstacles = obstacles.filter(o => o.x - scrollX > -100);
+  }
+
+  function drawObstacle(o) {
+    const ox = o.x - scrollX;
+    ctx.save();
+    ctx.translate(ox + o.w / 2, o.y + o.h / 2);
+    if (o.name === 'bug') {
+      // Bug character
+      ctx.shadowColor = o.color;
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = o.color;
+      ctx.beginPath(); ctx.roundRect(-o.w/2, -o.h/2, o.w, o.h, 8); ctx.fill();
+      ctx.fillStyle = '#fee2e2';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('🐛', 0, 2);
+      // Legs
+      ctx.strokeStyle = o.color;
+      ctx.lineWidth = 2;
+      for (let i = -1; i <= 1; i += 2) {
+        const legAnim = Math.sin(o.anim + i) * 6;
+        ctx.beginPath();
+        ctx.moveTo(i * (o.w/2), -4);
+        ctx.lineTo(i * (o.w/2 + 10), -4 + legAnim);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(i * (o.w/2), 4);
+        ctx.lineTo(i * (o.w/2 + 10), 4 - legAnim);
+        ctx.stroke();
+      }
+    } else if (o.name === 'glitch') {
+      ctx.shadowColor = o.color;
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = o.color;
+      // Glitchy rectangle
+      const g = Math.sin(o.anim * 3) * 3;
+      ctx.fillRect(-o.w/2 + g, -o.h/2, o.w, o.h);
+      ctx.fillStyle = '#1e1b4b88';
+      ctx.fillRect(-o.w/2, -o.h/2 + 8, o.w, 4);
+      ctx.fillRect(-o.w/2, o.h/2 - 12, o.w, 4);
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 14px monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('ERR', 0, 0);
+    } else {
+      // Error
+      ctx.shadowColor = o.color;
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = o.color;
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2 + o.anim;
+        const r = i % 2 === 0 ? o.w / 2 : o.w / 3;
+        const px = Math.cos(angle) * r, py = Math.sin(angle) * r * 0.6;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 16px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('!', 0, 0);
+    }
+    ctx.restore();
+  }
+
+  function drawObstacles() { obstacles.forEach(drawObstacle); }
+
+  // ── Particles ──────────────────────────────────────────
+  let particles = [];
+  function spawnParticles(x, y, color, count) {
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+      const speed = 2 + Math.random() * 4;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 2,
+        life: 40 + Math.random() * 20,
+        maxLife: 60,
+        color, size: 4 + Math.random() * 4
+      });
+    }
+  }
+
+  function updateParticles() {
+    for (const p of particles) {
+      p.x += p.vx; p.y += p.vy;
+      p.vy += 0.15;
+      p.life--;
+    }
+    particles = particles.filter(p => p.life > 0);
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.save();
+      ctx.globalAlpha = p.life / p.maxLife;
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (p.life / p.maxLife), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // ── Background ─────────────────────────────────────────
+  function drawBackground() {
+    // Sky gradient
+    const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    sky.addColorStop(0, '#0f0728');
+    sky.addColorStop(0.6, '#1e0a4a');
+    sky.addColorStop(1, '#2d1b69');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Stars
+    ctx.fillStyle = 'white';
+    for (let i = 0; i < 80; i++) {
+      const sx = ((i * 137.5 + scrollX * 0.05) % canvas.width + canvas.width) % canvas.width;
+      const sy = (i * 73.1) % (GROUND_Y - 20);
+      const brightness = 0.4 + Math.sin(frameCount * 0.03 + i) * 0.3;
+      ctx.globalAlpha = brightness;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Distant clouds/nebulae
+    for (let i = 0; i < 5; i++) {
+      const cx = ((i * 200 - scrollX * 0.1 + 1000) % (canvas.width + 200)) - 100;
+      const cy = 60 + i * 30;
+      ctx.save();
+      ctx.globalAlpha = 0.08;
+      ctx.fillStyle = '#a855f7';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 80, 40, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Ground
+    const groundGrad = ctx.createLinearGradient(0, GROUND_Y + 56, 0, canvas.height);
+    groundGrad.addColorStop(0, '#4c1d95');
+    groundGrad.addColorStop(1, '#1e0a4a');
+    ctx.fillStyle = groundGrad;
+    ctx.fillRect(0, GROUND_Y + 56, canvas.width, canvas.height - GROUND_Y - 56);
+
+    // Ground top highlight
+    ctx.fillStyle = '#7c3aed';
+    ctx.fillRect(0, GROUND_Y + 54, canvas.width, 6);
+    ctx.fillStyle = '#a78bfa44';
+    ctx.fillRect(0, GROUND_Y + 54, canvas.width, 2);
+
+    // Grid on ground
+    ctx.strokeStyle = '#5b21b633';
+    ctx.lineWidth = 1;
+    const gridSize = 40;
+    const offsetX = (scrollX * 0.3) % gridSize;
+    for (let gx = -offsetX; gx < canvas.width; gx += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(gx, GROUND_Y + 60);
+      ctx.lineTo(gx - 20, canvas.height);
+      ctx.stroke();
+    }
+  }
+
+  // ── HUD ────────────────────────────────────────────────
+  function updateUI() {
+    document.getElementById('score').textContent = score;
+    document.getElementById('highscore').textContent = highScore;
+    const hearts = '❤️'.repeat(Math.max(0, lives)) + '🖤'.repeat(Math.max(0, 3 - lives));
+    document.getElementById('lives').textContent = hearts;
+    document.getElementById('level').textContent = level;
+  }
+
+  function showMessage(text) {
+    const el = document.getElementById('message');
+    el.style.display = 'block';
+    el.innerHTML = text.replace('\n', '<br>');
+  }
+
+  function hideMessage() {
+    document.getElementById('message').style.display = 'none';
+  }
+
+  // ── Game flow ──────────────────────────────────────────
+  function startGame() {
+    state = 'playing';
+    hideMessage();
+  }
+
+  function restartGame() {
+    score = 0; lives = 3; level = 1; scrollX = 0; scrollSpeed = 2.5;
+    player.reset();
+    initPlatforms(); initGems(); initObstacles();
+    particles = [];
+    updateUI();
+    state = 'playing';
+    hideMessage();
+  }
+
+  let levelScoreThreshold = 200;
+
+  function checkLevelUp() {
+    if (score >= levelScoreThreshold) {
+      level++;
+      levelScoreThreshold = level * 250;
+      scrollSpeed += 0.3;
+      state = 'levelup';
+      showMessage(`Level ${level} !!`);
+      setTimeout(() => {
+        if (state === 'levelup') { state = 'playing'; hideMessage(); }
+      }, 1500);
+      updateUI();
+      spawnParticles(player.x + player.w / 2, player.y, '#a78bfa', 20);
+    }
+  }
+
+  // ── Draw start screen ──────────────────────────────────
+  function drawStartScreen() {
+    drawBackground();
+    // Claude standing
+    drawClaude(canvas.width / 2 - 24, GROUND_Y - 10, 48, 56, 0, true, 0);
+    // Title box
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#1e0a4a';
+    ctx.beginPath(); ctx.roundRect(160, 80, canvas.width - 320, 200, 16); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#7c3aed';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(160, 80, canvas.width - 320, 200, 16); ctx.stroke();
+
+    ctx.fillStyle = '#e9d5ff';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText("Claude's Adventure", canvas.width / 2, 140);
+    ctx.font = '16px sans-serif';
+    ctx.fillStyle = '#c4b5fd';
+    ctx.fillText('ジェムを集め、バグを避けろ！', canvas.width / 2, 180);
+    const pulse = 0.7 + Math.sin(frameCount * 0.08) * 0.3;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText('スペースキー / Enter でスタート', canvas.width / 2, 230);
+    ctx.restore();
+  }
+
+  // ── Main Loop ──────────────────────────────────────────
+  function update(dt) {
+    if (state !== 'playing') return;
+    frameCount++;
+
+    scrollX += scrollSpeed;
+    score += 0.05 * level;
+    highScore = Math.max(highScore, Math.floor(score));
+
+    player.update();
+    updatePlatforms();
+    updateGems();
+    updateObstacles();
+    updateParticles();
+    checkLevelUp();
+
+    if (Math.floor(score) % 10 === 0) updateUI();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (state === 'start') { drawStartScreen(); return; }
+
+    drawBackground();
+    drawPlatforms();
+    drawGems();
+    drawObstacles();
+    player.draw();
+    drawParticles();
+
+    if (state === 'gameover') {
+      ctx.save();
+      ctx.fillStyle = '#00000088';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+  }
+
+  function loop(timestamp) {
+    const dt = timestamp - lastTime;
+    lastTime = timestamp;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ── Init ───────────────────────────────────────────────
+  initPlatforms();
+  initGems();
+  initObstacles();
+  updateUI();
+  showMessage('');
+  requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
