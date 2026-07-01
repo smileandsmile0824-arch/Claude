@@ -2,169 +2,197 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <title>Claude's Adventure</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    html, body {
-      width:100%; height:100%;
+    html { height:100%; }
+    body {
+      height:100%;
       background:#222;
       overflow:hidden;
       user-select:none;
       -webkit-user-select:none;
+      font-family:'Courier New',monospace;
+    }
+    #game {
+      position:relative;
+      width:100%;
+      height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
     }
     canvas {
       display:block;
-      position:fixed;
-      top:50%; left:50%;
-      transform:translate(-50%,-50%);
-      image-rendering:pixelated;
-      image-rendering:crisp-edges;
-      touch-action:none;
-    }
-    /* Touch buttons */
-    #pad {
-      display:none;
-      position:fixed;
-      bottom:0; left:0;
-      width:100%; height:100%;
-      pointer-events:none;
-    }
-    .btn {
-      position:absolute;
-      pointer-events:all;
-      background:rgba(0,0,0,0.25);
-      border:3px solid rgba(255,255,255,0.35);
-      border-radius:16px;
-      color:rgba(255,255,255,0.8);
-      font-size:30px;
-      display:flex; align-items:center; justify-content:center;
+      /* size set by JS */
       -webkit-tap-highlight-color:transparent;
-      touch-action:none;
     }
-    .btn.on { background:rgba(0,0,0,0.45); }
-    #b-l  { bottom:20px; left:20px;  width:80px; height:80px; }
-    #b-r  { bottom:20px; left:115px; width:80px; height:80px; }
-    #b-j  { bottom:20px; right:20px; width:100px; height:100px; font-size:36px; }
+    /* ── Touch buttons (absolutely positioned by JS) ── */
+    .tb {
+      position:fixed;
+      display:none;        /* shown after first touch */
+      align-items:center;
+      justify-content:center;
+      background:rgba(180,160,140,0.5);
+      border:3px solid rgba(58,53,48,0.6);
+      border-radius:18px;
+      color:rgba(58,53,48,0.9);
+      font-weight:bold;
+      font-size:28px;
+      cursor:pointer;
+      -webkit-tap-highlight-color:transparent;
+      z-index:10;
+    }
+    .tb.on { background:rgba(130,110,90,0.65); }
   </style>
 </head>
 <body>
-<canvas id="c"></canvas>
-<div id="pad">
-  <div class="btn" id="b-l">◀</div>
-  <div class="btn" id="b-r">▶</div>
-  <div class="btn" id="b-j">▲</div>
+<div id="game">
+  <canvas id="cv"></canvas>
 </div>
+<!-- Touch buttons outside canvas so iOS receives them independently -->
+<div class="tb" id="tL">◀</div>
+<div class="tb" id="tR">▶</div>
+<div class="tb" id="tJ">▲</div>
 
 <script>
-// ─── Canvas / resize ──────────────────────────────────
-const cv  = document.getElementById('c');
+// ── Canvas setup ──────────────────────────────────────
+const cv  = document.getElementById('cv');
 const ctx = cv.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 
-const W = 640, H = 380;
-cv.width = W; cv.height = H;
+const GW = 640, GH = 400;
+cv.width  = GW;
+cv.height = GH;
 
+let scale = 1;
 function resize() {
-  const s = Math.min(innerWidth/W, innerHeight/H);
-  cv.style.width  = Math.floor(W*s)+'px';
-  cv.style.height = Math.floor(H*s)+'px';
-  layoutPad(s);
+  scale = Math.min(window.innerWidth / GW, window.innerHeight / GH);
+  const dw = Math.floor(GW * scale);
+  const dh = Math.floor(GH * scale);
+  cv.style.width  = dw + 'px';
+  cv.style.height = dh + 'px';
+  placeButtons(dw, dh);
 }
 
-// Position touch buttons to match canvas on screen
-function layoutPad(s) {
-  const cw = Math.floor(W*s), ch = Math.floor(H*s);
-  const ox = Math.floor((innerWidth -cw)/2);
-  const oy = Math.floor((innerHeight-ch)/2);
-  const sz = Math.max(64, Math.floor(ch*0.19));
-  const jsz= Math.max(80, Math.floor(ch*0.24));
-  const mg = Math.max(12, Math.floor(ch*0.04));
+function placeButtons(cw, ch) {
+  const ox = Math.floor((window.innerWidth  - cw) / 2);
+  const oy = Math.floor((window.innerHeight - ch) / 2);
+  const sz = Math.max(64, Math.floor(ch * 0.19));
+  const jz = Math.max(80, Math.floor(ch * 0.24));
+  const mg = Math.max(10, Math.floor(ch * 0.04));
 
-  const place = (id,l,b,w,h) => {
-    const el=document.getElementById(id);
-    el.style.left  = (ox+l)+'px';
-    el.style.top   = (oy+ch-b-h)+'px';
-    el.style.width = w+'px'; el.style.height = h+'px';
-  };
-  place('b-l', mg,          mg, sz, sz);
-  place('b-r', mg+sz+14,    mg, sz, sz);
-  place('b-j', cw-jsz-mg,   mg-6, jsz, jsz);
+  function place(id, left, bottom, w, h) {
+    const el = document.getElementById(id);
+    el.style.left   = (ox + left) + 'px';
+    el.style.top    = (oy + ch - bottom - h) + 'px';
+    el.style.width  = w + 'px';
+    el.style.height = h + 'px';
+  }
+  place('tL', mg,          mg, sz, sz);
+  place('tR', mg + sz + 12,mg, sz, sz);
+  place('tJ', cw - jz - mg, mg - 4, jz, jz);
 }
-addEventListener('resize', resize);
+
+window.addEventListener('resize', resize);
 resize();
 
-// ─── Input ────────────────────────────────────────────
+// ── Input: keyboard ───────────────────────────────────
 const K = {};
-addEventListener('keydown', e => {
+document.addEventListener('keydown', e => {
   K[e.code] = true;
-  if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
-  if((e.code==='Space'||e.code==='Enter') && gs==='over') restart();
-  if(e.code==='KeyR') restart();
-  if(e.code==='KeyP') gs = gs==='play'?'pause':(gs==='pause'?'play':gs);
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+  if (e.code === 'KeyR') restart();
+  if (e.code === 'KeyP') { gs = gs === 'play' ? 'pause' : gs === 'pause' ? 'play' : gs; }
 });
-addEventListener('keyup', e => { K[e.code]=false; });
+document.addEventListener('keyup', e => { K[e.code] = false; });
 
-// Virtual d-pad
-const T = {L:false, R:false, J:false};
-let jumpReleased = true;
+// ── Input: touch (iOS-safe) ───────────────────────────
+const T = { L: false, R: false, J: false };
+let touchOn = false;
 
-function wireBtn(id, setOn, setOff) {
-  const el = document.getElementById(id);
-  ['touchstart','mousedown'].forEach(ev =>
-    el.addEventListener(ev, e=>{ e.preventDefault(); setOn(); el.classList.add('on'); }, {passive:false}));
-  ['touchend','touchcancel','mouseup','mouseleave'].forEach(ev =>
-    el.addEventListener(ev, e=>{ e.preventDefault(); setOff(); el.classList.remove('on'); }, {passive:false}));
+function showButtons() {
+  if (touchOn) return;
+  touchOn = true;
+  ['tL','tR','tJ'].forEach(id => {
+    document.getElementById(id).style.display = 'flex';
+  });
 }
-wireBtn('b-l', ()=>T.L=true, ()=>T.L=false);
-wireBtn('b-r', ()=>T.R=true, ()=>T.R=false);
-wireBtn('b-j', ()=>T.J=true, ()=>{ T.J=false; jumpReleased=true; });
 
-// Touch-anywhere to restart when game over
-let touchEnabled = false;
-addEventListener('touchstart', e=>{
-  if(!touchEnabled){
-    touchEnabled=true;
-    document.getElementById('pad').style.display='block';
-    layoutPad(Math.min(innerWidth/W, innerHeight/H));
-  }
-  if(gs==='over') restart();
-},{passive:true});
-cv.addEventListener('click', ()=>{ if(gs==='over') restart(); });
+// Wire each button with touchstart/touchend ON THE ELEMENT
+// iOS requires listener on the actual element, not document
+function wireBtn(id, onDown, onUp) {
+  const el = document.getElementById(id);
 
-// ─── Palette ──────────────────────────────────────────
+  el.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    showButtons();
+    onDown();
+    el.classList.add('on');
+  }, { passive: false });
+
+  el.addEventListener('touchend', function(e) {
+    e.preventDefault();
+    onUp();
+    el.classList.remove('on');
+  }, { passive: false });
+
+  el.addEventListener('touchcancel', function(e) {
+    onUp();
+    el.classList.remove('on');
+  }, { passive: false });
+
+  // Mouse fallback for desktop testing
+  el.addEventListener('mousedown', function(e) { onDown(); el.classList.add('on'); });
+  el.addEventListener('mouseup',   function(e) { onUp();   el.classList.remove('on'); });
+  el.addEventListener('mouseleave',function(e) { onUp();   el.classList.remove('on'); });
+}
+
+wireBtn('tL', () => { T.L = true;  }, () => { T.L = false; });
+wireBtn('tR', () => { T.R = true;  }, () => { T.R = false; });
+wireBtn('tJ', () => { T.J = true;  }, () => { T.J = false; pl.jh = false; });
+
+// Detect first touch anywhere → show buttons
+document.addEventListener('touchstart', function(e) {
+  showButtons();
+  if (gs === 'over') restart();
+}, { passive: true });
+
+// Click for desktop restart
+cv.addEventListener('click', () => { if (gs === 'over') restart(); });
+
+// ── Colours ───────────────────────────────────────────
 const C = {
-  sky:'#eae6df', gnd:'#b8b0a4', gndT:'#c8c0b4', cloud:'#c8c2ba',
+  sky:'#eae6df', gnd:'#b8b0a4', gndT:'#c8c0b4', cld:'#c8c2ba',
   chr:'#c1724f', chrD:'#9a5a3c', eye:'#2a2520',
   gem:'#e8a030', gemS:'#f8d080',
   red:'#c04040', redD:'#802020', yel:'#d0a020',
   txt:'#3a3530', txtL:'#6b6560', shd:'#b0a898',
-  plt:'#a09080', pltT:'#b8a898', wht:'#f5f0e8',
-  hud:'#ccc6be',
+  plt:'#a09080', pltT:'#b8a898', wht:'#f5f0e8', hud:'#ccc6be',
 };
-
-// ─── Game state ───────────────────────────────────────
-let gs    = 'play'; // play | pause | over
-let score = 0, best = 0, lives = 3, lv = 1;
-let fc    = 0;
-let scrollX = 0, spd = 2.2;
-const GY  = H - 96; // ground Y
-
-// ─── Pixel helper ─────────────────────────────────────
 const r = (x,y,w,h,c) => { ctx.fillStyle=c; ctx.fillRect(Math.round(x),Math.round(y),w,h); };
 
-// ─── Character ────────────────────────────────────────
+// ── Game state ────────────────────────────────────────
+let gs = 'play'; // play | pause | over
+let score=0, best=0, lives=3, lv=1, fc=0;
+let scrollX=0, spd=2.2;
+const GY = GH - 96;
+
+// ── Character draw ────────────────────────────────────
 function drawChr(cx,cy,fr,onG,inv,bl) {
-  if(inv>0 && Math.floor(bl/4)%2===1) return;
+  if (inv>0 && Math.floor(bl/4)%2===1) return;
   const lp = onG ? Math.floor(fr/2)%2 : 0;
-  r(cx+4,cy+48,32,4,C.shd);
-  r(cx+4,cy+16,32,24,C.chr); r(cx+4,cy+36,32,4,C.chrD);
-  r(cx,   cy+20, 8,12,C.chr); r(cx,   cy+28,8,4,C.chrD);
-  r(cx+32,cy+20, 8,12,C.chr); r(cx+32,cy+28,8,4,C.chrD);
-  r(cx+6, cy,   28,20,C.chr); r(cx+6, cy+16,28,4,C.chrD);
-  r(cx+12,cy+6,  5, 6,C.eye); r(cx+23,cy+6, 5,6,C.eye);
-  r(cx+13,cy+7,  2, 2,C.wht); r(cx+24,cy+7,2,2,C.wht);
-  if(lp===0){
+  r(cx+4, cy+48,32, 4,C.shd);
+  r(cx+4, cy+16,32,24,C.chr);  r(cx+4, cy+36,32,4,C.chrD);
+  r(cx,   cy+20, 8,12,C.chr);  r(cx,   cy+28, 8,4,C.chrD);
+  r(cx+32,cy+20, 8,12,C.chr);  r(cx+32,cy+28, 8,4,C.chrD);
+  r(cx+6, cy,   28,20,C.chr);  r(cx+6, cy+16,28,4,C.chrD);
+  r(cx+12,cy+6,  5, 6,C.eye);  r(cx+23,cy+6, 5,6,C.eye);
+  r(cx+13,cy+7,  2, 2,C.wht);  r(cx+24,cy+7, 2,2,C.wht);
+  if (lp===0){
     r(cx+8, cy+40,10,12,C.chr); r(cx+22,cy+40,10,12,C.chr);
     r(cx+8, cy+48,10, 4,C.chrD);r(cx+22,cy+48,10, 4,C.chrD);
   } else {
@@ -173,50 +201,57 @@ function drawChr(cx,cy,fr,onG,inv,bl) {
   }
 }
 
-// ─── Player ───────────────────────────────────────────
+// ── Player ────────────────────────────────────────────
 const PW=40, PH=52;
-const P = {
+const pl = {
   x:80, y:GY-PH, vx:0, vy:0,
   onG:false, jc:0, jh:false,
   inv:0, bl:0, fr:0, ft:0, mv:false,
-  reset(){ this.x=80; this.y=GY-PH; this.vx=0; this.vy=0; this.onG=false; this.jc=0; this.inv=0; this.bl=0; this.fr=0; this.jh=false; },
-  update(){
+  reset() {
+    this.x=80; this.y=GY-PH; this.vx=0; this.vy=0;
+    this.onG=false; this.jc=0; this.jh=false;
+    this.inv=0; this.bl=0; this.fr=0; this.ft=0;
+  },
+  update() {
     const goL = K['ArrowLeft'] ||K['KeyA']||T.L;
     const goR = K['ArrowRight']||K['KeyD']||T.R;
     const doJ = K['ArrowUp']||K['Space']||K['KeyW']||T.J;
 
-    this.mv=false;
-    if(goL){ this.vx=-4.2; this.mv=true; }
-    else if(goR){ this.vx=4.2; this.mv=true; }
-    else this.vx=0;
+    this.mv = false;
+    if (goL)      { this.vx=-4.2; this.mv=true; }
+    else if (goR) { this.vx= 4.2; this.mv=true; }
+    else            this.vx=0;
 
-    if(doJ && !this.jh && this.jc<2){
+    if (doJ && !this.jh && this.jc<2) {
       this.vy=-12.5; this.jc++; this.jh=true;
-      spawnFx(this.x+PW/2, this.y+PH, C.shd, 4,'d');
+      spawnFx(this.x+PW/2, this.y+PH, C.shd, 4, 'd');
     }
-    if(!doJ) this.jh=false;
+    if (!doJ) this.jh=false;
 
     this.vy = Math.min(this.vy+0.52, 14);
     this.x += this.vx; this.y += this.vy;
-    this.onG=false;
+    this.onG = false;
 
-    if(this.y+PH >= GY){ this.y=GY-PH; this.vy=0; this.onG=true; this.jc=0; }
-    for(const p of plats){
+    if (this.y+PH >= GY) {
+      this.y=GY-PH; this.vy=0; this.onG=true; this.jc=0;
+    }
+    for (const p of plats) {
       const bx=p.x-scrollX;
-      if(this.x+PW>bx+2&&this.x<bx+p.w-2&&this.y+PH>p.y&&this.y+PH<p.y+20&&this.vy>=0){
+      if (this.x+PW>bx+2 && this.x<bx+p.w-2 && this.y+PH>p.y && this.y+PH<p.y+20 && this.vy>=0){
         this.y=p.y-PH; this.vy=0; this.onG=true; this.jc=0;
       }
     }
-    this.x=Math.max(4,Math.min(this.x,W-4-PW));
-    if(this.inv>0) this.inv--;
+    this.x = Math.max(4, Math.min(this.x, GW-4-PW));
+    if (this.inv>0) this.inv--;
     this.bl++;
-    if(this.mv&&this.onG){ if(++this.ft>7){this.fr=(this.fr+1)%4;this.ft=0;} }
-    else if(!this.mv){ this.fr=0; this.ft=0; }
+
+    if (this.mv && this.onG) { if (++this.ft>7){ this.fr=(this.fr+1)%4; this.ft=0; } }
+    else if (!this.mv)        { this.fr=0; this.ft=0; }
   },
-  draw(){ drawChr(this.x-2, this.y-4, this.fr, this.onG, this.inv, this.bl); }
+  draw() { drawChr(this.x-2, this.y-4, this.fr, this.onG, this.inv, this.bl); }
 };
 
-// ─── Platforms ────────────────────────────────────────
+// ── Platforms ─────────────────────────────────────────
 let plats=[], nPx=0;
 function addPlat(){
   const w=(5+Math.floor(Math.random()*5))*16;
@@ -225,9 +260,9 @@ function addPlat(){
   nPx+=w+110+Math.random()*160;
 }
 function initPlats(){ plats=[]; nPx=460; for(let i=0;i<6;i++) addPlat(); }
-function updPlats(){ plats=plats.filter(p=>p.x-scrollX>-400); while(nPx<W+300)addPlat(); }
+function updPlats(){ plats=plats.filter(p=>p.x-scrollX>-400); while(nPx<GW+300) addPlat(); }
 function drwPlats(){
-  for(const p of plats){
+  for (const p of plats){
     const bx=Math.round(p.x-scrollX);
     r(bx+4,p.y+12,p.w,6,C.shd);
     r(bx,  p.y+4, p.w,12,C.plt);
@@ -237,28 +272,28 @@ function drwPlats(){
   }
 }
 
-// ─── Gems ─────────────────────────────────────────────
+// ── Gems ──────────────────────────────────────────────
 let gems=[], gt=0;
 function initGems(){ gems=[]; gt=0; }
 function updGems(){
-  if(++gt>Math.max(38,78-lv*5)){
+  if(++gt > Math.max(38,78-lv*5)){
     gt=0;
     const p=plats[Math.floor(Math.random()*plats.length)];
     gems.push(p
-      ?{x:p.x+p.w/2, y:p.y-18, a:Math.random()*Math.PI*2, done:false}
-      :{x:scrollX+W+90+Math.random()*200, y:GY-20, a:0, done:false});
+      ?{x:p.x+p.w/2,  y:p.y-18,   a:Math.random()*Math.PI*2, done:false}
+      :{x:scrollX+GW+90+Math.random()*200, y:GY-20, a:0, done:false});
   }
-  for(const g of gems){
+  for (const g of gems){
     g.a+=0.07;
     const gx=g.x-scrollX, gy=g.y+Math.sin(g.a)*4;
-    if(!g.done&&gx+12>P.x&&gx-12<P.x+PW&&gy+12>P.y&&gy-12<P.y+PH){
+    if(!g.done && gx+12>pl.x && gx-12<pl.x+PW && gy+12>pl.y && gy-12<pl.y+PH){
       g.done=true; score+=10*lv; spawnFx(gx,gy,C.gem,8,'g');
     }
   }
-  gems=gems.filter(g=>!g.done&&g.x-scrollX>-100);
+  gems=gems.filter(g=>!g.done && g.x-scrollX>-100);
 }
 function drwGems(){
-  for(const g of gems){
+  for (const g of gems){
     if(g.done) continue;
     const gx=Math.round(g.x-scrollX), gy=Math.round(g.y+Math.sin(g.a)*4), s=10;
     r(gx-s+2,gy+s+2,s*2,4,C.shd);
@@ -271,54 +306,53 @@ function drwGems(){
   }
 }
 
-// ─── Enemies ──────────────────────────────────────────
+// ── Enemies ───────────────────────────────────────────
 let ens=[], et=0;
 function initEns(){ ens=[]; et=0; }
-
 function drwBug(ox,oy,an){
   const lb=Math.round(Math.sin(an*4)*2);
   r(ox+2,oy+28,28,4,C.shd);
-  r(ox+4,oy+8,24,18,C.red); r(ox+4,oy+8,24,6,'#d05050'); r(ox+4,oy+22,24,4,C.redD);
-  r(ox+8,oy,16,12,C.red);
-  r(ox+10,oy+3,4,5,C.eye); r(ox+18,oy+3,4,5,C.eye);
-  r(ox+11,oy+4,2,2,C.wht); r(ox+19,oy+4,2,2,C.wht);
-  r(ox,   oy+12+lb,6,3,C.redD); r(ox+26,oy+12-lb,6,3,C.redD);
-  r(ox,   oy+18-lb,6,3,C.redD); r(ox+26,oy+18+lb,6,3,C.redD);
+  r(ox+4,oy+8, 24,18,C.red);r(ox+4,oy+8,24,6,'#d05050');r(ox+4,oy+22,24,4,C.redD);
+  r(ox+8,oy,   16,12,C.red);
+  r(ox+10,oy+3,4,5,C.eye);r(ox+18,oy+3,4,5,C.eye);
+  r(ox+11,oy+4,2,2,C.wht);r(ox+19,oy+4,2,2,C.wht);
+  r(ox,   oy+12+lb,6,3,C.redD);r(ox+26,oy+12-lb,6,3,C.redD);
+  r(ox,   oy+18-lb,6,3,C.redD);r(ox+26,oy+18+lb,6,3,C.redD);
 }
 function drwSpk(ox,oy,an){
   const b=Math.round(Math.sin(an*2)*3);
   r(ox+2,oy+30,28,4,C.shd);
-  r(ox+6,oy+8+b,20,20,C.yel); r(ox+6,oy+8+b,20,6,'#e8b830');
+  r(ox+6,oy+8+b,20,20,C.yel);r(ox+6,oy+8+b,20,6,'#e8b830');
   ctx.fillStyle=C.redD;
   for(let i=0;i<3;i++){const sx=ox+6+i*8;ctx.beginPath();ctx.moveTo(sx+4,oy+b);ctx.lineTo(sx,oy+10+b);ctx.lineTo(sx+8,oy+10+b);ctx.closePath();ctx.fill();}
   r(ox+10,oy+14+b,4,5,C.eye);r(ox+18,oy+14+b,4,5,C.eye);
-  r(ox+9,oy+12+b,6,2,C.eye); r(ox+17,oy+12+b,6,2,C.eye);
+  r(ox+9, oy+12+b,6,2,C.eye);r(ox+17,oy+12+b,6,2,C.eye);
   r(ox+11,oy+22+b,10,3,C.redD);
 }
 function updEns(){
-  if(++et>Math.max(38,88-lv*8)){
+  if(++et > Math.max(38,88-lv*8)){
     et=0; const bug=Math.random()<0.6;
-    ens.push({bug, x:scrollX+W+50, y:GY-(bug?28:30), w:32,h:28, s:2+lv*0.35+Math.random()*0.5, a:0, dead:false});
+    ens.push({bug, x:scrollX+GW+50, y:GY-(bug?28:30), w:32,h:28, s:2+lv*0.35+Math.random()*0.5, a:0, dead:false});
   }
   for(const e of ens){
     e.x-=e.s; e.a+=0.1;
     const ex=e.x-scrollX;
-    if(!e.dead&&P.inv===0&&ex+e.w-4>P.x+4&&ex+4<P.x+PW-4&&e.y+4<P.y+PH&&e.y+e.h>P.y+6){
-      e.dead=true; P.inv=90; lives--;
-      spawnFx(P.x+PW/2,P.y+PH/2,C.red,12,'g');
+    if(!e.dead && pl.inv===0 && ex+e.w-4>pl.x+4 && ex+4<pl.x+PW-4 && e.y+4<pl.y+PH && e.y+e.h>pl.y+6){
+      e.dead=true; pl.inv=90; lives--;
+      spawnFx(pl.x+PW/2, pl.y+PH/2, C.red, 12, 'g');
       if(lives<=0){ gs='over'; best=Math.max(best,Math.floor(score)); }
     }
   }
-  ens=ens.filter(e=>!e.dead&&e.x-scrollX>-100);
+  ens=ens.filter(e=>!e.dead && e.x-scrollX>-100);
 }
 function drwEns(){
   for(const e of ens){
     const ox=Math.round(e.x-scrollX);
-    e.bug?drwBug(ox,e.y,e.a):drwSpk(ox,e.y,e.a);
+    e.bug ? drwBug(ox,e.y,e.a) : drwSpk(ox,e.y,e.a);
   }
 }
 
-// ─── Particles ────────────────────────────────────────
+// ── Particles ─────────────────────────────────────────
 let fxs=[];
 function spawnFx(x,y,col,n,t){
   for(let i=0;i<n;i++){
@@ -333,7 +367,7 @@ function drwFx(){
   ctx.globalAlpha=1;
 }
 
-// ─── Background ───────────────────────────────────────
+// ── Background ────────────────────────────────────────
 const cshp=[
   {d:[0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0],c:5},
   {d:[0,0,1,1,0,0,0,1,1,1,1,0,1,1,1,1,1,1,0,1,1,1,1,0],c:6},
@@ -346,93 +380,84 @@ function drwCloud(x,y,sc,sh){
 }
 const clds=[{ox:80,y:50,sc:2,si:0},{ox:310,y:28,sc:2,si:1},{ox:550,y:58,sc:2,si:2},{ox:180,y:115,sc:1.5,si:0},{ox:420,y:95,sc:1.5,si:2}];
 function drwBg(){
-  r(0,0,W,H,C.sky);
-  ctx.fillStyle=C.cloud;
+  r(0,0,GW,GH,C.sky);
+  ctx.fillStyle=C.cld;
   for(const cl of clds){
-    const cx=((cl.ox-scrollX*0.2)%(W+220)+W+220)%(W+220)-100;
+    const cx=((cl.ox-scrollX*0.2)%(GW+220)+GW+220)%(GW+220)-100;
     drwCloud(cx,cl.y,cl.sc,cshp[cl.si]);
   }
-  r(0,GY,W,H-GY,C.gnd); r(0,GY,W,6,C.gndT);
+  r(0,GY,GW,GH-GY,C.gnd); r(0,GY,GW,6,C.gndT);
   ctx.fillStyle=C.shd;
-  for(let gx=(-(scrollX*0.5)%16+16)%16;gx<W;gx+=16) ctx.fillRect(Math.round(gx),GY+8,8,4);
+  for(let gx=(-(scrollX*0.5)%16+16)%16;gx<GW;gx+=16) ctx.fillRect(Math.round(gx),GY+8,8,4);
 }
 
-// ─── HUD ──────────────────────────────────────────────
+// ── HUD on canvas ─────────────────────────────────────
 function drwHUD(){
-  r(0,0,W,32,C.hud);
-  ctx.fillStyle=C.txt; ctx.strokeStyle=C.txt; ctx.lineWidth=2;
-  ctx.beginPath();ctx.moveTo(0,32);ctx.lineTo(W,32);ctx.stroke();
-  ctx.font='bold 13px Courier New'; ctx.textBaseline='middle';
-  const items=[`SCORE ${Math.floor(score)}`,`BEST ${Math.floor(best)}`,`${'♥'.repeat(Math.max(0,lives))}${'♡'.repeat(Math.max(0,3-lives))}`,`LV ${lv}`];
-  const sp=W/4;
+  r(0,0,GW,32,C.hud);
+  ctx.strokeStyle=C.txt;ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(0,32);ctx.lineTo(GW,32);ctx.stroke();
+  const items=[`SCORE ${Math.floor(score)}`,`BEST ${Math.floor(best)}`,
+               `${'♥'.repeat(Math.max(0,lives))}${'♡'.repeat(Math.max(0,3-lives))}`,`LV ${lv}`];
+  const sp=GW/4;
+  ctx.font='bold 13px Courier New';ctx.textBaseline='middle';
   items.forEach((t,i)=>{
     ctx.textAlign='center';
-    ctx.fillStyle=C.shd; ctx.fillText(t,sp*(i+0.5)+1,17);
-    ctx.fillStyle=C.txt; ctx.fillText(t,sp*(i+0.5),16);
+    ctx.fillStyle=C.shd;ctx.fillText(t,sp*(i+0.5)+1,17);
+    ctx.fillStyle=C.txt;ctx.fillText(t,sp*(i+0.5),16);
   });
 }
 
-// ─── Overlay box helpers ───────────────────────────────
-function box(x,y,w,h){ r(x+4,y+4,w,h,C.shd); r(x,y,w,h,C.wht); ctx.strokeStyle=C.txt;ctx.lineWidth=3;ctx.strokeRect(x,y,w,h); }
-function bigTxt(t,x,y,sz,col){ ctx.font=`bold ${sz}px Courier New`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=C.shd;ctx.fillText(t,x+2,y+2);ctx.fillStyle=col;ctx.fillText(t,x,y); }
-function smTxt(t,x,y){ ctx.font='14px Courier New';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=C.txtL;ctx.fillText(t,x,y); }
+// ── Overlays ──────────────────────────────────────────
+function box(x,y,w,h){ r(x+4,y+4,w,h,C.shd);r(x,y,w,h,C.wht);ctx.strokeStyle=C.txt;ctx.lineWidth=3;ctx.strokeRect(x,y,w,h); }
+function bigT(t,x,y,sz,col){ ctx.font=`bold ${sz}px Courier New`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=C.shd;ctx.fillText(t,x+2,y+2);ctx.fillStyle=col;ctx.fillText(t,x,y); }
+function smT(t,x,y){ ctx.font='14px Courier New';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=C.txtL;ctx.fillText(t,x,y); }
 
-// ─── Game flow ────────────────────────────────────────
+// ── Restart ───────────────────────────────────────────
 function restart(){
-  score=0; lives=3; lv=1; scrollX=0; spd=2.2;
-  P.reset(); initPlats(); initGems(); initEns(); fxs=[];
+  score=0;lives=3;lv=1;scrollX=0;spd=2.2;
+  pl.reset();initPlats();initGems();initEns();fxs=[];
   gs='play';
 }
-
 let lvT=150;
-function chkLevel(){
-  if(score>=lvT){ lv++; lvT=lv*200; spd+=0.25;
-    spawnFx(P.x+PW/2,P.y,C.gem,16,'g');
-  }
+function chkLv(){
+  if(score>=lvT){ lv++;lvT=lv*200;spd+=0.25; spawnFx(pl.x+PW/2,pl.y,C.gem,16,'g'); }
 }
 
-// ─── Main loop ────────────────────────────────────────
+// ── Main loop ─────────────────────────────────────────
 function update(){
   fc++;
   if(gs!=='play') return;
-  scrollX+=spd;
-  score+=0.04*lv;
-  best=Math.max(best,score);
-  P.update();
-  updPlats(); updGems(); updEns(); updFx();
-  chkLevel();
+  scrollX+=spd; score+=0.04*lv; best=Math.max(best,score);
+  pl.update(); updPlats(); updGems(); updEns(); updFx(); chkLv();
 }
 
 function draw(){
-  ctx.clearRect(0,0,W,H);
-  drwBg(); drwPlats(); drwGems(); drwEns();
-  P.draw(); drwFx(); drwHUD();
+  ctx.clearRect(0,0,GW,GH);
+  drwBg();drwPlats();drwGems();drwEns();pl.draw();drwFx();drwHUD();
 
-  const cx=W/2, pulse=Math.floor(fc/20)%2===0;
+  const cx=GW/2, pulse=Math.floor(fc/20)%2===0;
 
   if(gs==='pause'){
-    ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(0,0,W,H);
-    box(220,145,200,90);
-    bigTxt('PAUSED',cx,185,22,C.txt);
-    smTxt('P キーで再開',cx,215);
+    ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(0,0,GW,GH);
+    box(225,150,190,80);bigT('PAUSED',cx,185,20,C.txt);
+    smT('P キーで再開',cx,213);
   }
-
   if(gs==='over'){
-    ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(0,0,W,H);
-    box(155,118,330,170);
-    bigTxt('GAME OVER',cx,158,26,C.red);
-    smTxt(`SCORE: ${Math.floor(score)}`,cx,198);
-    smTxt(`BEST:  ${Math.floor(best)}`,cx,220);
+    ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(0,0,GW,GH);
+    box(155,118,330,176);
+    bigT('GAME OVER',cx,160,26,C.red);
+    smT(`SCORE: ${Math.floor(score)}`,cx,200);
+    smT(`BEST:  ${Math.floor(best)}`,cx,222);
     ctx.fillStyle=pulse?C.txt:C.txtL;
     ctx.font='bold 15px Courier New';ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText(touchEnabled?'画面をタップしてリスタート':'R キーでリスタート',cx,258);
+    ctx.fillText(touchOn?'画面をタップしてリスタート':'R キーでリスタート',cx,264);
   }
 }
 
 function loop(){ update(); draw(); requestAnimationFrame(loop); }
 
-// ─── Start ────────────────────────────────────────────
-initPlats(); initGems(); initEns();
+// ── Boot ──────────────────────────────────────────────
+initPlats();initGems();initEns();
 requestAnimationFrame(loop);
 </script>
 </body>
