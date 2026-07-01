@@ -2,64 +2,211 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>Claude's Adventure</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      width: 100%; height: 100%;
       background: #d6d0c8;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+    }
+    body {
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      min-height: 100vh;
+      justify-content: flex-start;
       font-family: 'Courier New', monospace;
-      image-rendering: pixelated;
     }
-    #wrapper {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-    }
+
+    /* ── HUD ── */
     #ui {
+      width: 100%;
       display: flex;
-      gap: 24px;
-      font-size: 14px;
+      justify-content: space-around;
+      padding: 6px 8px 4px;
+      font-size: clamp(10px, 3vw, 14px);
       color: #3a3530;
       font-weight: bold;
-      letter-spacing: 1px;
+      letter-spacing: 0.5px;
+      background: #ccc6be;
+      border-bottom: 2px solid #3a3530;
+      flex-shrink: 0;
+    }
+
+    /* ── Game area ── */
+    #game-wrap {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
     }
     canvas {
       display: block;
       image-rendering: pixelated;
-      border: 3px solid #3a3530;
-      box-shadow: 4px 4px 0 #3a3530;
+      image-rendering: crisp-edges;
+      /* Size set by JS to fit screen */
+      border-left: 2px solid #3a3530;
+      border-right: 2px solid #3a3530;
     }
+
+    /* ── Touch controls ── */
+    #touch-controls {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      display: none; /* shown only on touch devices */
+    }
+    .btn {
+      position: absolute;
+      pointer-events: all;
+      border: 3px solid #3a353088;
+      border-radius: 12px;
+      background: #b0a89866;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      color: #3a3530bb;
+      font-weight: bold;
+      cursor: pointer;
+      -webkit-touch-callout: none;
+      touch-action: none;
+      /* Prevent double-tap zoom */
+    }
+    .btn:active, .btn.pressed {
+      background: #9a9088aa;
+      border-color: #3a3530cc;
+    }
+    #btn-left  { bottom: 16px; left: 12px;  width: 72px; height: 72px; }
+    #btn-right { bottom: 16px; left: 96px;  width: 72px; height: 72px; }
+    #btn-jump  { bottom: 16px; right: 12px; width: 88px; height: 88px; font-size: 32px; }
+    #btn-pause { top: 8px; right: 8px; width: 44px; height: 44px; font-size: 18px; border-radius: 8px; }
+
+    /* ── Keyboard hint (desktop only) ── */
     #controls {
+      flex-shrink: 0;
       font-size: 11px;
       color: #6b6560;
       text-align: center;
-      letter-spacing: 0.5px;
+      padding: 4px;
+      background: #ccc6be;
+      border-top: 2px solid #3a3530;
+      width: 100%;
     }
   </style>
 </head>
 <body>
-<div id="wrapper">
-  <div id="ui">
-    <span>SCORE: <b id="score">0</b></span>
-    <span>BEST: <b id="highscore">0</b></span>
-    <span>LIFE: <b id="lives">♥♥♥</b></span>
-    <span>LV: <b id="level">1</b></span>
-  </div>
+
+<div id="ui">
+  <span>SCORE: <b id="score">0</b></span>
+  <span>BEST: <b id="highscore">0</b></span>
+  <span>LIFE: <b id="lives">♥♥♥</b></span>
+  <span>LV: <b id="level">1</b></span>
+</div>
+
+<div id="game-wrap">
   <canvas id="gameCanvas" width="640" height="360"></canvas>
-  <div id="controls">← → MOVE &nbsp;|&nbsp; ↑ / SPACE JUMP &nbsp;|&nbsp; P PAUSE &nbsp;|&nbsp; R RESTART</div>
+
+  <div id="touch-controls">
+    <div class="btn" id="btn-left">◀</div>
+    <div class="btn" id="btn-right">▶</div>
+    <div class="btn" id="btn-jump">▲</div>
+    <div class="btn" id="btn-pause">⏸</div>
+  </div>
+</div>
+
+<div id="controls" id="kb-hint">
+  ← → MOVE &nbsp;|&nbsp; ↑ / SPACE JUMP &nbsp;|&nbsp; P PAUSE &nbsp;|&nbsp; R RESTART
 </div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
+
+// ── Responsive canvas sizing ───────────────────────────
+const GAME_W = 640, GAME_H = 360;
+
+function resizeCanvas() {
+  const wrap = document.getElementById('game-wrap');
+  const availW = wrap.clientWidth;
+  const availH = wrap.clientHeight;
+  const ratio = GAME_W / GAME_H;
+  let w = availW, h = availW / ratio;
+  if (h > availH) { h = availH; w = availH * ratio; }
+  canvas.style.width  = Math.floor(w) + 'px';
+  canvas.style.height = Math.floor(h) + 'px';
+  // Position touch controls to match canvas
+  const tc = document.getElementById('touch-controls');
+  const offsetX = Math.floor((availW - w) / 2);
+  tc.style.left   = offsetX + 'px';
+  tc.style.width  = Math.floor(w) + 'px';
+  tc.style.height = Math.floor(h) + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ── Touch device detection ─────────────────────────────
+let isTouchDevice = false;
+window.addEventListener('touchstart', () => {
+  if (!isTouchDevice) {
+    isTouchDevice = true;
+    document.getElementById('touch-controls').style.display = 'block';
+    document.getElementById('controls').style.display = 'none';
+  }
+}, { once: false, passive: true });
+
+// ── Input ──────────────────────────────────────────────
+const keys = {};
+// Virtual touch buttons
+const touch = { left: false, right: false, jump: false, jumpJustPressed: false };
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+  if (!keys[e.key]) {
+    if ((e.key === ' ' || e.key === 'Enter') && (state === 'start' || state === 'gameover')) handleStart();
+    if (e.key === 'p' || e.key === 'P') togglePause();
+    if (e.key === 'r' || e.key === 'R') restartGame();
+  }
+  keys[e.key] = true;
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// Touch button setup
+function setupBtn(id, onDown, onUp) {
+  const el = document.getElementById(id);
+  const down = (e) => { e.preventDefault(); onDown(); el.classList.add('pressed'); };
+  const up   = (e) => { e.preventDefault(); onUp();   el.classList.remove('pressed'); };
+  el.addEventListener('touchstart', down, { passive: false });
+  el.addEventListener('touchend',   up,   { passive: false });
+  el.addEventListener('touchcancel',up,   { passive: false });
+  el.addEventListener('mousedown',  down);
+  el.addEventListener('mouseup',    up);
+}
+
+setupBtn('btn-left',  () => { touch.left = true; },  () => { touch.left = false; });
+setupBtn('btn-right', () => { touch.right = true; }, () => { touch.right = false; });
+setupBtn('btn-jump',  () => { touch.jump = true; touch.jumpJustPressed = true; },
+                      () => { touch.jump = false; player.jumpHeld = false; });
+setupBtn('btn-pause', () => { togglePause(); }, () => {});
+
+// Tap on canvas for start/gameover
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (state === 'start' || state === 'gameover') handleStart();
+}, { passive: false });
 
 // ── Palette ────────────────────────────────────────────
 const C = {
@@ -83,98 +230,56 @@ const C = {
   white:    '#f5f0e8',
 };
 
-// ── State ──────────────────────────────────────────────
-let state = 'start'; // start | playing | paused | levelup | gameover
+// ── Game state ─────────────────────────────────────────
+let state = 'start';
 let score = 0, highScore = 0, lives = 3, level = 1;
 let frameCount = 0;
 
-// ── Input ──────────────────────────────────────────────
-const keys = {};
-document.addEventListener('keydown', e => {
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
-  if (!keys[e.key]) {
-    if ((e.key === ' ' || e.key === 'Enter') && state === 'start') startGame();
-    if (e.key === 'p' || e.key === 'P') {
-      if (state === 'playing') { state = 'paused'; }
-      else if (state === 'paused') { state = 'playing'; }
-    }
-    if (e.key === 'r' || e.key === 'R') restartGame();
-  }
-  keys[e.key] = true;
-});
-document.addEventListener('keyup', e => { keys[e.key] = false; });
-
-// ── World constants ────────────────────────────────────
+// ── World ──────────────────────────────────────────────
 const GRAVITY = 0.5;
-const GROUND_Y = 276; // top of ground surface
-let scrollX = 0;
-let scrollSpeed = 2.2;
+const GROUND_Y = 276;
+let scrollX = 0, scrollSpeed = 2.2;
 
-// ── Pixel character drawing ────────────────────────────
-// Grid: each cell = PIXEL_SIZE px
-const PS = 4; // pixel size
-
-function drawPixelRect(x, y, w, h, color) {
+// ── Pixel drawing helper ───────────────────────────────
+function px(x, y, w, h, color) {
   ctx.fillStyle = color;
   ctx.fillRect(Math.round(x), Math.round(y), w, h);
 }
 
-// Character pixel map (16×20 grid, PS=4 → 64×80 px but we use 12×16)
-// We'll draw it procedurally to match the screenshot
+// ── Character sprite ───────────────────────────────────
 function drawChar(cx, cy, frame, onGround, invincible, blinkTimer) {
   if (invincible > 0 && Math.floor(blinkTimer / 4) % 2 === 1) return;
-
-  // Leg animation
   const legPhase = onGround ? Math.floor(frame / 2) % 2 : 0;
 
-  // Shadow
-  drawPixelRect(cx + 4, cy + 48, 32, 4, C.shadow);
+  px(cx + 4, cy + 48, 32, 4, C.shadow);                   // ground shadow
+  px(cx + 4, cy + 16, 32, 24, C.char);                    // body
+  px(cx + 4, cy + 36, 32,  4, C.charDark);                // body bottom
+  px(cx,      cy + 20,  8, 12, C.char);                   // left arm
+  px(cx,      cy + 28,  8,  4, C.charDark);
+  px(cx + 32, cy + 20,  8, 12, C.char);                   // right arm
+  px(cx + 32, cy + 28,  8,  4, C.charDark);
+  px(cx + 6,  cy,      28, 20, C.char);                   // head
+  px(cx + 6,  cy + 16, 28,  4, C.charDark);
+  px(cx + 12, cy +  6,  5,  6, C.charEye);                // eyes
+  px(cx + 23, cy +  6,  5,  6, C.charEye);
+  px(cx + 13, cy +  7,  2,  2, C.white);                  // eye shine
+  px(cx + 24, cy +  7,  2,  2, C.white);
 
-  // === Body (main block 32×24) ===
-  drawPixelRect(cx + 4, cy + 16, 32, 24, C.char);
-  // bottom shadow strip
-  drawPixelRect(cx + 4, cy + 36, 32, 4, C.charDark);
-
-  // === Arms (horizontal stubs) ===
-  // Left arm
-  drawPixelRect(cx,      cy + 20, 8, 12, C.char);
-  drawPixelRect(cx,      cy + 28, 8, 4,  C.charDark);
-  // Right arm
-  drawPixelRect(cx + 32, cy + 20, 8, 12, C.char);
-  drawPixelRect(cx + 32, cy + 28, 8, 4,  C.charDark);
-
-  // === Head (28×20, centered above body) ===
-  drawPixelRect(cx + 6, cy, 28, 20, C.char);
-  // head bottom shadow
-  drawPixelRect(cx + 6, cy + 16, 28, 4, C.charDark);
-  // head top highlight
-  drawPixelRect(cx + 6, cy, 28, 4, C.char);
-
-  // === Eyes (2 black squares) ===
-  drawPixelRect(cx + 12, cy + 6, 5, 6, C.charEye);
-  drawPixelRect(cx + 23, cy + 6, 5, 6, C.charEye);
-  // eye shine
-  drawPixelRect(cx + 13, cy + 7, 2, 2, C.white);
-  drawPixelRect(cx + 24, cy + 7, 2, 2, C.white);
-
-  // === Legs ===
   if (legPhase === 0) {
-    // standing/right
-    drawPixelRect(cx + 8,  cy + 40, 10, 12, C.char);
-    drawPixelRect(cx + 22, cy + 40, 10, 12, C.char);
-    drawPixelRect(cx + 8,  cy + 48, 10, 4,  C.charDark);
-    drawPixelRect(cx + 22, cy + 48, 10, 4,  C.charDark);
+    px(cx + 8,  cy + 40, 10, 12, C.char);
+    px(cx + 22, cy + 40, 10, 12, C.char);
+    px(cx + 8,  cy + 48, 10,  4, C.charDark);
+    px(cx + 22, cy + 48, 10,  4, C.charDark);
   } else {
-    // walking step
-    drawPixelRect(cx + 8,  cy + 40, 10, 8,  C.char);
-    drawPixelRect(cx + 22, cy + 40, 10, 16, C.char);
-    drawPixelRect(cx + 8,  cy + 44, 10, 4,  C.charDark);
-    drawPixelRect(cx + 22, cy + 52, 10, 4,  C.charDark);
+    px(cx + 8,  cy + 40, 10,  8, C.char);
+    px(cx + 22, cy + 40, 10, 16, C.char);
+    px(cx + 8,  cy + 44, 10,  4, C.charDark);
+    px(cx + 22, cy + 52, 10,  4, C.charDark);
   }
 }
 
 // ── Player ─────────────────────────────────────────────
-const PW = 40, PH = 52; // collision box (slightly smaller than sprite)
+const PW = 40, PH = 52;
 const player = {
   x: 80, y: GROUND_Y - PH,
   vx: 0, vy: 0,
@@ -190,18 +295,19 @@ const player = {
     this.vx = 0; this.vy = 0;
     this.onGround = false; this.jumpCount = 0;
     this.invincible = 0; this.blinkTimer = 0;
-    this.frame = 0;
+    this.frame = 0; this.jumpHeld = false;
   },
 
   update() {
-    // Move
-    this.moving = false;
-    if (keys['ArrowLeft']) { this.vx = -4; this.moving = true; }
-    else if (keys['ArrowRight']) { this.vx = 4; this.moving = true; }
-    else this.vx = 0;
+    const goLeft  = keys['ArrowLeft']  || touch.left;
+    const goRight = keys['ArrowRight'] || touch.right;
+    const jumpKey = keys['ArrowUp'] || keys[' '] || touch.jump;
 
-    // Jump
-    const jumpKey = keys['ArrowUp'] || keys[' '];
+    this.moving = false;
+    if (goLeft)       { this.vx = -4; this.moving = true; }
+    else if (goRight) { this.vx =  4; this.moving = true; }
+    else               this.vx = 0;
+
     if (jumpKey && !this.jumpHeld) {
       if (this.jumpCount < this.maxJumps) {
         this.vy = -12;
@@ -212,57 +318,37 @@ const player = {
     }
     if (!jumpKey) this.jumpHeld = false;
 
-    this.vy += GRAVITY;
-    if (this.vy > 14) this.vy = 14;
+    this.vy = Math.min(this.vy + GRAVITY, 14);
     this.x += this.vx;
     this.y += this.vy;
-
     this.onGround = false;
 
-    // Ground
     if (this.y + PH >= GROUND_Y) {
-      this.y = GROUND_Y - PH;
-      this.vy = 0;
-      this.onGround = true;
-      this.jumpCount = 0;
+      this.y = GROUND_Y - PH; this.vy = 0;
+      this.onGround = true; this.jumpCount = 0;
     }
-
-    // Platform collision
     for (const p of platforms) {
-      const px = p.x - scrollX;
-      if (this.x + PW > px + 2 && this.x < px + p.w - 2 &&
+      const bx = p.x - scrollX;
+      if (this.x + PW > bx + 2 && this.x < bx + p.w - 2 &&
           this.y + PH > p.y && this.y + PH < p.y + 20 && this.vy >= 0) {
-        this.y = p.y - PH;
-        this.vy = 0;
-        this.onGround = true;
-        this.jumpCount = 0;
+        this.y = p.y - PH; this.vy = 0;
+        this.onGround = true; this.jumpCount = 0;
       }
     }
-
-    // Clamp x
-    if (this.x < 4) this.x = 4;
-    if (this.x + PW > canvas.width - 4) this.x = canvas.width - 4 - PW;
-
-    // Timers
+    this.x = Math.max(4, Math.min(this.x, GAME_W - 4 - PW));
     if (this.invincible > 0) this.invincible--;
     this.blinkTimer++;
 
-    // Walk animation
     if (this.moving && this.onGround) {
-      this.frameTimer++;
-      if (this.frameTimer > 7) { this.frame = (this.frame + 1) % 4; this.frameTimer = 0; }
+      if (++this.frameTimer > 7) { this.frame = (this.frame + 1) % 4; this.frameTimer = 0; }
     } else if (!this.moving) { this.frame = 0; this.frameTimer = 0; }
   },
 
-  draw() {
-    // Sprite offset: draw centered on collision box
-    drawChar(this.x - 2, this.y - 4, this.frame, this.onGround, this.invincible, this.blinkTimer);
-  }
+  draw() { drawChar(this.x - 2, this.y - 4, this.frame, this.onGround, this.invincible, this.blinkTimer); }
 };
 
 // ── Platforms ──────────────────────────────────────────
-let platforms = [];
-let nextPlatX = 700;
+let platforms = [], nextPlatX = 700;
 
 function spawnPlatform() {
   const w = (5 + Math.floor(Math.random() * 5)) * 16;
@@ -270,220 +356,112 @@ function spawnPlatform() {
   platforms.push({ x: nextPlatX + scrollX, y, w });
   nextPlatX += w + 100 + Math.random() * 160;
 }
-
-function initPlatforms() {
-  platforms = [];
-  nextPlatX = 480;
-  for (let i = 0; i < 5; i++) spawnPlatform();
-}
-
+function initPlatforms() { platforms = []; nextPlatX = 480; for (let i = 0; i < 5; i++) spawnPlatform(); }
 function updatePlatforms() {
   platforms = platforms.filter(p => p.x - scrollX > -400);
-  while (nextPlatX < canvas.width + 300) spawnPlatform();
+  while (nextPlatX < GAME_W + 300) spawnPlatform();
 }
-
 function drawPlatforms() {
   for (const p of platforms) {
-    const px = Math.round(p.x - scrollX);
-    // shadow
+    const bx = Math.round(p.x - scrollX);
+    ctx.fillStyle = C.shadow;   ctx.fillRect(bx + 4, p.y + 12, p.w, 6);
+    ctx.fillStyle = C.platform; ctx.fillRect(bx,     p.y +  4, p.w, 12);
+    ctx.fillStyle = C.platTop;  ctx.fillRect(bx,     p.y,      p.w, 8);
     ctx.fillStyle = C.shadow;
-    ctx.fillRect(px + 4, p.y + 12, p.w, 6);
-    // body
-    ctx.fillStyle = C.platform;
-    ctx.fillRect(px, p.y + 4, p.w, 12);
-    // top highlight
-    ctx.fillStyle = C.platTop;
-    ctx.fillRect(px, p.y, p.w, 8);
-    // pixel dither top edge
-    ctx.fillStyle = C.shadow;
-    for (let dx = 0; dx < p.w; dx += 8) ctx.fillRect(px + dx, p.y, 4, 2);
+    for (let dx = 0; dx < p.w; dx += 8) ctx.fillRect(bx + dx, p.y, 4, 2);
   }
 }
 
 // ── Gems ───────────────────────────────────────────────
-let gems = [];
-let gemTimer = 0;
-
+let gems = [], gemTimer = 0;
 function initGems() { gems = []; gemTimer = 0; }
-
 function updateGems() {
-  gemTimer++;
-  if (gemTimer > Math.max(40, 80 - level * 5)) {
+  if (++gemTimer > Math.max(40, 80 - level * 5)) {
     gemTimer = 0;
-    // Spawn on platform or ground
     const onPlat = platforms[Math.floor(Math.random() * platforms.length)];
-    if (onPlat) {
-      gems.push({ x: onPlat.x + onPlat.w / 2, y: onPlat.y - 18, anim: 0, collected: false });
-    } else {
-      gems.push({ x: scrollX + canvas.width + 80 + Math.random() * 200,
-                  y: GROUND_Y - 20, anim: 0, collected: false });
-    }
+    gems.push(onPlat
+      ? { x: onPlat.x + onPlat.w / 2, y: onPlat.y - 18, anim: 0, collected: false }
+      : { x: scrollX + GAME_W + 80 + Math.random() * 200, y: GROUND_Y - 20, anim: 0, collected: false });
   }
-
   for (const g of gems) {
     g.anim += 0.07;
-    const gx = g.x - scrollX;
-    const gy = g.y + Math.sin(g.anim) * 4;
-    if (!g.collected &&
-        gx + 12 > player.x && gx - 12 < player.x + PW &&
-        gy + 12 > player.y && gy - 12 < player.y + PH) {
-      g.collected = true;
-      score += 10 * level;
+    const gx = g.x - scrollX, gy = g.y + Math.sin(g.anim) * 4;
+    if (!g.collected && gx+12 > player.x && gx-12 < player.x+PW && gy+12 > player.y && gy-12 < player.y+PH) {
+      g.collected = true; score += 10 * level;
       spawnParticles(gx, gy, C.gem, 8, 'gem');
     }
   }
   gems = gems.filter(g => !g.collected && g.x - scrollX > -100);
 }
-
 function drawGems() {
   for (const g of gems) {
     if (g.collected) continue;
-    const gx = Math.round(g.x - scrollX);
-    const gy = Math.round(g.y + Math.sin(g.anim) * 4);
-    const s = 10;
-    // Shadow
-    ctx.fillStyle = C.shadow;
-    ctx.fillRect(gx - s + 2, gy + s + 2, s * 2, 4);
-    // Diamond
+    const gx = Math.round(g.x - scrollX), gy = Math.round(g.y + Math.sin(g.anim) * 4), s = 10;
+    ctx.fillStyle = C.shadow; ctx.fillRect(gx - s + 2, gy + s + 2, s * 2, 4);
     ctx.fillStyle = C.gem;
-    ctx.beginPath();
-    ctx.moveTo(gx, gy - s);
-    ctx.lineTo(gx + s, gy);
-    ctx.lineTo(gx, gy + s);
-    ctx.lineTo(gx - s, gy);
-    ctx.closePath(); ctx.fill();
-    // Shine
+    ctx.beginPath(); ctx.moveTo(gx, gy-s); ctx.lineTo(gx+s, gy); ctx.lineTo(gx, gy+s); ctx.lineTo(gx-s, gy); ctx.closePath(); ctx.fill();
     ctx.fillStyle = C.gemShine;
-    ctx.beginPath();
-    ctx.moveTo(gx - 2, gy - s + 2);
-    ctx.lineTo(gx + 3, gy - 2);
-    ctx.lineTo(gx - 2, gy + 2);
-    ctx.closePath(); ctx.fill();
-    // Pixel outline
-    ctx.strokeStyle = C.charDark;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(gx, gy - s);
-    ctx.lineTo(gx + s, gy);
-    ctx.lineTo(gx, gy + s);
-    ctx.lineTo(gx - s, gy);
-    ctx.closePath(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx-2, gy-s+2); ctx.lineTo(gx+3, gy-2); ctx.lineTo(gx-2, gy+2); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = C.charDark; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(gx, gy-s); ctx.lineTo(gx+s, gy); ctx.lineTo(gx, gy+s); ctx.lineTo(gx-s, gy); ctx.closePath(); ctx.stroke();
   }
 }
 
 // ── Obstacles ──────────────────────────────────────────
-let obstacles = [];
-let obsTimer = 0;
-
+let obstacles = [], obsTimer = 0;
 function initObstacles() { obstacles = []; obsTimer = 0; }
 
-// Pixel-art obstacle draw functions
 function drawBug(ox, oy, anim) {
-  // Body
-  const legBob = Math.sin(anim * 4) * 2;
-  // Shadow
-  ctx.fillStyle = C.shadow;
-  ctx.fillRect(ox + 2, oy + 28, 28, 4);
-  // Body
-  ctx.fillStyle = C.obsRed;
-  ctx.fillRect(ox + 4, oy + 8, 24, 18);
-  // Shell highlight
-  ctx.fillStyle = '#d05050';
-  ctx.fillRect(ox + 4, oy + 8, 24, 6);
-  // Underbelly
+  const lb = Math.sin(anim * 4) * 2;
+  ctx.fillStyle = C.shadow;   ctx.fillRect(ox+2, oy+28, 28, 4);
+  ctx.fillStyle = C.obsRed;   ctx.fillRect(ox+4, oy+8,  24, 18);
+  ctx.fillStyle = '#d05050';  ctx.fillRect(ox+4, oy+8,  24,  6);
+  ctx.fillStyle = C.obsDark;  ctx.fillRect(ox+4, oy+22, 24,  4);
+  ctx.fillStyle = C.obsRed;   ctx.fillRect(ox+8, oy,    16, 12);
+  ctx.fillStyle = C.charEye;  ctx.fillRect(ox+10, oy+3, 4, 5); ctx.fillRect(ox+18, oy+3, 4, 5);
+  ctx.fillStyle = C.white;    ctx.fillRect(ox+11, oy+4, 2, 2); ctx.fillRect(ox+19, oy+4, 2, 2);
   ctx.fillStyle = C.obsDark;
-  ctx.fillRect(ox + 4, oy + 22, 24, 4);
-  // Head
-  ctx.fillStyle = C.obsRed;
-  ctx.fillRect(ox + 8, oy, 16, 12);
-  // Eyes
-  ctx.fillStyle = C.charEye;
-  ctx.fillRect(ox + 10, oy + 3, 4, 5);
-  ctx.fillRect(ox + 18, oy + 3, 4, 5);
-  ctx.fillStyle = C.white;
-  ctx.fillRect(ox + 11, oy + 4, 2, 2);
-  ctx.fillRect(ox + 19, oy + 4, 2, 2);
-  // Legs
-  ctx.fillStyle = C.obsDark;
-  ctx.fillRect(ox,      oy + 12 + legBob, 6, 3);
-  ctx.fillRect(ox + 26, oy + 12 - legBob, 6, 3);
-  ctx.fillRect(ox,      oy + 18 - legBob, 6, 3);
-  ctx.fillRect(ox + 26, oy + 18 + legBob, 6, 3);
+  ctx.fillRect(ox,    oy+12+lb, 6, 3); ctx.fillRect(ox+26, oy+12-lb, 6, 3);
+  ctx.fillRect(ox,    oy+18-lb, 6, 3); ctx.fillRect(ox+26, oy+18+lb, 6, 3);
 }
-
 function drawSpike(ox, oy, anim) {
   const bob = Math.sin(anim * 2) * 3;
-  // Shadow
-  ctx.fillStyle = C.shadow;
-  ctx.fillRect(ox + 2, oy + 30, 28, 4);
-  // Body
-  ctx.fillStyle = C.obsYellow;
-  ctx.fillRect(ox + 6, oy + 8 + bob, 20, 20);
-  ctx.fillStyle = '#e8b830';
-  ctx.fillRect(ox + 6, oy + 8 + bob, 20, 6);
-  // Spikes on top
+  ctx.fillStyle = C.shadow;    ctx.fillRect(ox+2, oy+30, 28, 4);
+  ctx.fillStyle = C.obsYellow; ctx.fillRect(ox+6, oy+8+bob, 20, 20);
+  ctx.fillStyle = '#e8b830';   ctx.fillRect(ox+6, oy+8+bob, 20,  6);
   ctx.fillStyle = C.obsDark;
   for (let i = 0; i < 3; i++) {
     const sx = ox + 6 + i * 8;
-    ctx.beginPath();
-    ctx.moveTo(sx + 4, oy + bob);
-    ctx.lineTo(sx, oy + 10 + bob);
-    ctx.lineTo(sx + 8, oy + 10 + bob);
-    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(sx+4, oy+bob); ctx.lineTo(sx, oy+10+bob); ctx.lineTo(sx+8, oy+10+bob); ctx.closePath(); ctx.fill();
   }
-  // Face
-  ctx.fillStyle = C.charEye;
-  ctx.fillRect(ox + 10, oy + 14 + bob, 4, 5);
-  ctx.fillRect(ox + 18, oy + 14 + bob, 4, 5);
-  // Angry brows
-  ctx.fillStyle = C.charEye;
-  ctx.fillRect(ox + 9,  oy + 12 + bob, 6, 2);
-  ctx.fillRect(ox + 17, oy + 12 + bob, 6, 2);
-  // mouth
-  ctx.fillStyle = C.obsDark;
-  ctx.fillRect(ox + 11, oy + 22 + bob, 10, 3);
+  ctx.fillStyle = C.charEye; ctx.fillRect(ox+10, oy+14+bob, 4, 5); ctx.fillRect(ox+18, oy+14+bob, 4, 5);
+  ctx.fillStyle = C.charEye; ctx.fillRect(ox+9,  oy+12+bob, 6, 2); ctx.fillRect(ox+17, oy+12+bob, 6, 2);
+  ctx.fillStyle = C.obsDark; ctx.fillRect(ox+11, oy+22+bob, 10, 3);
 }
-
 function drawObstacles() {
   for (const o of obstacles) {
-    const ox = Math.round(o.x - scrollX);
-    const oy = o.y;
-    o.name === 'bug' ? drawBug(ox, oy, o.anim) : drawSpike(ox, oy, o.anim);
+    o.name === 'bug' ? drawBug(Math.round(o.x - scrollX), o.y, o.anim)
+                     : drawSpike(Math.round(o.x - scrollX), o.y, o.anim);
   }
 }
-
 function updateObstacles() {
-  obsTimer++;
-  const interval = Math.max(40, 90 - level * 8);
-  if (obsTimer > interval) {
+  if (++obsTimer > Math.max(40, 90 - level * 8)) {
     obsTimer = 0;
     const isBug = Math.random() < 0.6;
-    obstacles.push({
-      name: isBug ? 'bug' : 'spike',
-      x: scrollX + canvas.width + 50,
-      y: GROUND_Y - (isBug ? 28 : 30),
-      w: 32, h: 28,
-      speed: 2 + level * 0.35 + Math.random() * 0.5,
-      anim: 0, dead: false
-    });
+    obstacles.push({ name: isBug ? 'bug' : 'spike',
+      x: scrollX + GAME_W + 50, y: GROUND_Y - (isBug ? 28 : 30),
+      w: 32, h: 28, speed: 2 + level * 0.35 + Math.random() * 0.5, anim: 0, dead: false });
   }
-
   for (const o of obstacles) {
-    o.x -= o.speed;
-    o.anim += 0.1;
+    o.x -= o.speed; o.anim += 0.1;
     const ox = o.x - scrollX;
     if (!o.dead && player.invincible === 0 &&
-        ox + o.w - 4 > player.x + 4 && ox + 4 < player.x + PW - 4 &&
-        o.y + 4 < player.y + PH && o.y + o.h > player.y + 6) {
-      o.dead = true;
-      player.invincible = 90;
-      lives--;
-      spawnParticles(player.x + PW/2, player.y + PH/2, C.obsRed, 10, 'hit');
+        ox+o.w-4 > player.x+4 && ox+4 < player.x+PW-4 &&
+        o.y+4 < player.y+PH   && o.y+o.h > player.y+6) {
+      o.dead = true; player.invincible = 90; lives--;
+      spawnParticles(player.x+PW/2, player.y+PH/2, C.obsRed, 10, 'hit');
       updateUI();
-      if (lives <= 0) {
-        state = 'gameover';
-        if (score > highScore) highScore = Math.floor(score);
-      }
+      if (lives <= 0) { state = 'gameover'; highScore = Math.max(highScore, Math.floor(score)); }
     }
   }
   obstacles = obstacles.filter(o => !o.dead && o.x - scrollX > -100);
@@ -495,142 +473,144 @@ function spawnParticles(x, y, color, count, type) {
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2 + Math.random() * 0.4;
     const spd = type === 'dust' ? 1 + Math.random() * 2 : 2 + Math.random() * 4;
-    particles.push({
-      x, y, color,
-      vx: Math.cos(angle) * spd,
-      vy: Math.sin(angle) * spd - (type === 'dust' ? 0 : 2),
-      life: 20 + Math.random() * 20,
-      maxLife: 40,
-      size: type === 'dust' ? 3 : 4,
-    });
+    particles.push({ x, y, color,
+      vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd - (type === 'dust' ? 0 : 2),
+      life: 20 + Math.random() * 20, maxLife: 40, size: type === 'dust' ? 3 : 4 });
   }
 }
-
 function updateParticles() {
-  for (const p of particles) {
-    p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.life--;
-  }
+  for (const p of particles) { p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.life--; }
   particles = particles.filter(p => p.life > 0);
 }
-
 function drawParticles() {
   for (const p of particles) {
-    const alpha = p.life / p.maxLife;
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = p.color;
-    const s = Math.round(p.size * alpha);
-    if (s > 0) ctx.fillRect(Math.round(p.x - s/2), Math.round(p.y - s/2), s, s);
+    const a = p.life / p.maxLife, s = Math.round(p.size * a);
+    if (s > 0) { ctx.globalAlpha = a; ctx.fillStyle = p.color; ctx.fillRect(Math.round(p.x-s/2), Math.round(p.y-s/2), s, s); }
   }
   ctx.globalAlpha = 1;
 }
 
-// ── Pixel-art clouds ───────────────────────────────────
+// ── Background ─────────────────────────────────────────
 const cloudShapes = [
   [0,1,1,1,0, 1,1,1,1,1, 1,1,1,1,1, 0,1,1,1,0],
   [0,0,1,1,0,0, 0,1,1,1,1,0, 1,1,1,1,1,1, 0,1,1,1,1,0],
   [0,1,1,0, 1,1,1,1, 1,1,1,1, 0,1,1,0],
 ];
-
-function drawCloud(x, y, scale, shape, cols) {
-  const sz = scale * 8;
-  const rows = shape.length / cols;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (shape[r * cols + c]) {
-        ctx.fillRect(Math.round(x + c * sz), Math.round(y + r * sz), sz, sz);
-      }
-    }
-  }
+function drawCloud(x, y, sc, shape, cols) {
+  const sz = sc * 8, rows = shape.length / cols;
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      if (shape[r * cols + c]) ctx.fillRect(Math.round(x + c*sz), Math.round(y + r*sz), sz, sz);
 }
-
 const cloudData = [
-  { ox: 80,  y: 50,  scale: 2, si: 0, cols: 5 },
-  { ox: 320, y: 30,  scale: 2, si: 1, cols: 6 },
-  { ox: 560, y: 60,  scale: 2, si: 2, cols: 4 },
-  { ox: 200, y: 110, scale: 1.5, si: 0, cols: 5 },
-  { ox: 440, y: 90,  scale: 1.5, si: 2, cols: 4 },
+  {ox:80,  y:50,  sc:2,   si:0, cols:5},
+  {ox:320, y:30,  sc:2,   si:1, cols:6},
+  {ox:560, y:60,  sc:2,   si:2, cols:4},
+  {ox:200, y:110, sc:1.5, si:0, cols:5},
+  {ox:440, y:90,  sc:1.5, si:2, cols:4},
 ];
-
 function drawBackground() {
-  // Sky
-  ctx.fillStyle = C.bg;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // Clouds (parallax 0.2)
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, GAME_W, GAME_H);
   ctx.fillStyle = C.cloud;
   for (const cd of cloudData) {
-    const cx = ((cd.ox - scrollX * 0.2) % (canvas.width + 200) + canvas.width + 200) % (canvas.width + 200) - 100;
-    drawCloud(cx, cd.y, cd.scale, cloudShapes[cd.si], cd.cols);
+    const cx = ((cd.ox - scrollX * 0.2) % (GAME_W+200) + GAME_W+200) % (GAME_W+200) - 100;
+    drawCloud(cx, cd.y, cd.sc, cloudShapes[cd.si], cd.cols);
   }
-
-  // Ground
-  ctx.fillStyle = C.ground;
-  ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
-
-  // Ground top edge (pixel highlight)
-  ctx.fillStyle = C.groundTop;
-  ctx.fillRect(0, GROUND_Y, canvas.width, 6);
-
-  // Ground dither pattern
+  ctx.fillStyle = C.ground;   ctx.fillRect(0, GROUND_Y, GAME_W, GAME_H - GROUND_Y);
+  ctx.fillStyle = C.groundTop; ctx.fillRect(0, GROUND_Y, GAME_W, 6);
   ctx.fillStyle = C.shadow;
-  for (let gx = (-(scrollX * 0.5) % 16 + 16) % 16; gx < canvas.width; gx += 16) {
+  for (let gx = (-(scrollX * 0.5) % 16 + 16) % 16; gx < GAME_W; gx += 16)
     ctx.fillRect(Math.round(gx), GROUND_Y + 8, 8, 4);
-  }
 }
 
-// ── UI helpers ─────────────────────────────────────────
+// ── HUD ────────────────────────────────────────────────
 function updateUI() {
   document.getElementById('score').textContent = Math.floor(score);
   document.getElementById('highscore').textContent = Math.floor(highScore);
   document.getElementById('lives').textContent = '♥'.repeat(Math.max(0, lives)) + '♡'.repeat(Math.max(0, 3 - lives));
   document.getElementById('level').textContent = level;
 }
-
 function drawPixelText(text, x, y, size, color) {
-  ctx.fillStyle = color;
   ctx.font = `bold ${size}px 'Courier New', monospace`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  // Shadow
-  ctx.fillStyle = C.shadow;
-  ctx.fillText(text, x + 2, y + 2);
-  ctx.fillStyle = color;
-  ctx.fillText(text, x, y);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = C.shadow; ctx.fillText(text, x+2, y+2);
+  ctx.fillStyle = color;    ctx.fillText(text, x, y);
 }
-
 function drawBox(x, y, w, h) {
-  ctx.fillStyle = C.white;
-  ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = C.shadow;
-  ctx.fillRect(x + 4, y + 4, w, h);
-  ctx.fillStyle = C.white;
-  ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = C.text;
-  ctx.lineWidth = 3;
-  ctx.strokeRect(x, y, w, h);
+  ctx.fillStyle = C.shadow; ctx.fillRect(x+4, y+4, w, h);
+  ctx.fillStyle = C.white;  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = C.text; ctx.lineWidth = 3; ctx.strokeRect(x, y, w, h);
 }
 
 // ── Game flow ──────────────────────────────────────────
-function startGame()  { state = 'playing'; }
+function handleStart() {
+  if (state === 'start') { state = 'playing'; }
+  else if (state === 'gameover') restartGame();
+}
+function togglePause() {
+  if (state === 'playing') state = 'paused';
+  else if (state === 'paused') state = 'playing';
+}
 function restartGame() {
   score = 0; lives = 3; level = 1; scrollX = 0; scrollSpeed = 2.2;
-  player.reset();
-  initPlatforms(); initGems(); initObstacles();
-  particles = [];
-  updateUI();
-  state = 'playing';
+  player.reset(); initPlatforms(); initGems(); initObstacles(); particles = [];
+  updateUI(); state = 'playing';
 }
 
 let levelThreshold = 150;
 function checkLevelUp() {
   if (score >= levelThreshold) {
-    level++;
-    levelThreshold = level * 200;
-    scrollSpeed += 0.25;
-    state = 'levelup';
-    updateUI();
+    level++; levelThreshold = level * 200; scrollSpeed += 0.25;
+    state = 'levelup'; updateUI();
     spawnParticles(player.x + PW/2, player.y, C.gem, 16, 'gem');
     setTimeout(() => { if (state === 'levelup') state = 'playing'; }, 1600);
+  }
+}
+
+// ── Overlay screens ────────────────────────────────────
+function drawOverlays() {
+  const cx = GAME_W / 2;
+
+  if (state === 'start') {
+    drawChar(cx - 20, GROUND_Y - PH - 4, 0, true, 0, 0);
+    drawBox(100, 55, GAME_W - 200, 185);
+    drawPixelText("CLAUDE'S ADVENTURE", cx, 105, 20, C.text);
+    ctx.fillStyle = C.textLight; ctx.font = '13px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('ジェムを集め、敵を避けろ！', cx, 143);
+    const pulse = Math.floor(frameCount / 15) % 2 === 0;
+    ctx.fillStyle = pulse ? C.text : C.textLight;
+    ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText(isTouchDevice ? '画面をタップしてスタート' : 'SPACE / ENTER でスタート', cx, 185);
+    ctx.fillStyle = C.textLight; ctx.font = '11px Courier New';
+    ctx.fillText(isTouchDevice ? '◀ ▶ で移動  ▲ でジャンプ' : '← → MOVE  ↑/SPACE JUMP', cx, 215);
+    return;
+  }
+  if (state === 'paused') {
+    ctx.fillStyle = '#0000003a'; ctx.fillRect(0, 0, GAME_W, GAME_H);
+    drawBox(220, 140, 200, 80);
+    drawPixelText('PAUSED', cx, 185, 22, C.text);
+    ctx.fillStyle = C.textLight; ctx.font = '12px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText(isTouchDevice ? '⏸ をタップして再開' : 'P キーで再開', cx, 208);
+    return;
+  }
+  if (state === 'levelup') {
+    drawBox(170, 125, 300, 100);
+    drawPixelText(`LEVEL ${level}!`, cx, 165, 24, C.obsYellow);
+    ctx.fillStyle = C.textLight; ctx.font = '13px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('スピードアップ！', cx, 200);
+    return;
+  }
+  if (state === 'gameover') {
+    ctx.fillStyle = '#0000004a'; ctx.fillRect(0, 0, GAME_W, GAME_H);
+    drawBox(130, 100, 380, 165);
+    drawPixelText('GAME OVER', cx, 148, 26, C.obsRed);
+    ctx.fillStyle = C.text; ctx.font = '14px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText(`SCORE: ${Math.floor(score)}`, cx, 186);
+    ctx.fillText(`BEST:  ${Math.floor(highScore)}`, cx, 206);
+    const pulse = Math.floor(frameCount / 15) % 2 === 0;
+    ctx.fillStyle = pulse ? C.text : C.textLight;
+    ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText(isTouchDevice ? '画面をタップしてリスタート' : 'R キーでリスタート', cx, 240);
   }
 }
 
@@ -642,82 +622,26 @@ function update() {
   score += 0.04 * level;
   highScore = Math.max(highScore, score);
   player.update();
-  updatePlatforms();
-  updateGems();
-  updateObstacles();
-  updateParticles();
+  updatePlatforms(); updateGems(); updateObstacles(); updateParticles();
   checkLevelUp();
   if (frameCount % 8 === 0) updateUI();
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, GAME_W, GAME_H);
   drawBackground();
   drawPlatforms();
   drawGems();
   drawObstacles();
   player.draw();
   drawParticles();
-
-  if (state === 'start') {
-    // Draw char preview
-    drawChar(canvas.width/2 - 20, GROUND_Y - PH - 4, 0, true, 0, 0);
-    // Title box
-    drawBox(140, 60, canvas.width - 280, 170);
-    drawPixelText("CLAUDE'S ADVENTURE", canvas.width/2, 110, 20, C.text);
-    ctx.fillStyle = C.textLight;
-    ctx.font = '13px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText('ジェムを集め、敵を避けろ！', canvas.width/2, 148);
-    const pulse = Math.floor(frameCount / 15) % 2 === 0;
-    ctx.fillStyle = pulse ? C.text : C.textLight;
-    ctx.font = 'bold 14px Courier New';
-    ctx.fillText('SPACE / ENTER でスタート', canvas.width/2, 196);
-  }
-
-  if (state === 'paused') {
-    ctx.fillStyle = '#0000003a';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    drawBox(220, 140, 200, 80);
-    drawPixelText('PAUSED', canvas.width/2, 185, 22, C.text);
-  }
-
-  if (state === 'levelup') {
-    drawBox(180, 130, 280, 90);
-    drawPixelText(`LEVEL ${level}!`, canvas.width/2, 170, 24, C.obsYellow);
-    ctx.fillStyle = C.textLight;
-    ctx.font = '13px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText('スピードアップ！', canvas.width/2, 200);
-  }
-
-  if (state === 'gameover') {
-    ctx.fillStyle = '#0000004a';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    drawBox(150, 110, 340, 140);
-    drawPixelText('GAME OVER', canvas.width/2, 158, 26, C.obsRed);
-    ctx.fillStyle = C.text;
-    ctx.font = '14px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText(`SCORE: ${Math.floor(score)}   BEST: ${Math.floor(highScore)}`, canvas.width/2, 198);
-    const pulse = Math.floor(frameCount / 15) % 2 === 0;
-    ctx.fillStyle = pulse ? C.text : C.textLight;
-    ctx.font = 'bold 14px Courier New';
-    ctx.fillText('R キーでリスタート', canvas.width/2, 228);
-  }
+  drawOverlays();
 }
 
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
-}
+function loop() { update(); draw(); requestAnimationFrame(loop); }
 
 // ── Init ───────────────────────────────────────────────
-initPlatforms();
-initGems();
-initObstacles();
-updateUI();
+initPlatforms(); initGems(); initObstacles(); updateUI();
 requestAnimationFrame(loop);
 </script>
 </body>
