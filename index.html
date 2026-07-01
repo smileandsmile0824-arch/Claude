@@ -3,698 +3,722 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Claude's Adventure - 横スクロールゲーム</title>
+  <title>Claude's Adventure</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: #0f0f1a;
+      background: #d6d0c8;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      font-family: 'Segoe UI', sans-serif;
-      color: #e0e0ff;
-      overflow: hidden;
+      font-family: 'Courier New', monospace;
+      image-rendering: pixelated;
     }
-    h1 {
-      font-size: 2rem;
-      margin-bottom: 12px;
-      background: linear-gradient(90deg, #a855f7, #6366f1, #22d3ee);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      text-shadow: none;
+    #wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
     }
     #ui {
       display: flex;
-      gap: 32px;
-      margin-bottom: 10px;
-      font-size: 1rem;
-      color: #c4b5fd;
+      gap: 24px;
+      font-size: 14px;
+      color: #3a3530;
+      font-weight: bold;
+      letter-spacing: 1px;
     }
-    #ui span { font-weight: bold; color: #e0d4ff; }
     canvas {
-      border: 2px solid #4c1d95;
-      border-radius: 8px;
-      box-shadow: 0 0 40px #7c3aed44;
       display: block;
+      image-rendering: pixelated;
+      border: 3px solid #3a3530;
+      box-shadow: 4px 4px 0 #3a3530;
     }
     #controls {
-      margin-top: 12px;
-      font-size: 0.82rem;
-      color: #7c6fa0;
+      font-size: 11px;
+      color: #6b6560;
       text-align: center;
-    }
-    #message {
-      position: absolute;
-      font-size: 2.5rem;
-      font-weight: bold;
-      color: #e9d5ff;
-      text-shadow: 0 0 20px #a855f7;
-      pointer-events: none;
-      display: none;
+      letter-spacing: 0.5px;
     }
   </style>
 </head>
 <body>
-  <h1>✨ Claude's Adventure</h1>
+<div id="wrapper">
   <div id="ui">
-    <div>スコア: <span id="score">0</span></div>
-    <div>ハイスコア: <span id="highscore">0</span></div>
-    <div>ライフ: <span id="lives">❤️❤️❤️</span></div>
-    <div>レベル: <span id="level">1</span></div>
+    <span>SCORE: <b id="score">0</b></span>
+    <span>BEST: <b id="highscore">0</b></span>
+    <span>LIFE: <b id="lives">♥♥♥</b></span>
+    <span>LV: <b id="level">1</b></span>
   </div>
-  <div id="message"></div>
-  <canvas id="gameCanvas" width="800" height="420"></canvas>
-  <div id="controls">
-    ← → : 移動 &nbsp;|&nbsp; ↑ / Space : ジャンプ &nbsp;|&nbsp; R : リスタート &nbsp;|&nbsp; P : ポーズ
-    <br>スペースキーを押してゲームスタート！
-  </div>
+  <canvas id="gameCanvas" width="640" height="360"></canvas>
+  <div id="controls">← → MOVE &nbsp;|&nbsp; ↑ / SPACE JUMP &nbsp;|&nbsp; P PAUSE &nbsp;|&nbsp; R RESTART</div>
+</div>
 
-  <script>
-  const canvas = document.getElementById('gameCanvas');
-  const ctx = canvas.getContext('2d');
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
 
-  // ── State ──────────────────────────────────────────────
-  let state = 'start'; // start | playing | paused | dead | gameover | levelup
-  let score = 0, highScore = 0, lives = 3, level = 1;
-  let frameCount = 0, lastTime = 0;
+// ── Palette ────────────────────────────────────────────
+const C = {
+  bg:       '#eae6df',
+  ground:   '#b8b0a4',
+  groundTop:'#c8c0b4',
+  cloud:    '#c8c2ba',
+  char:     '#c1724f',
+  charDark: '#9a5a3c',
+  charEye:  '#2a2520',
+  gem:      '#e8a030',
+  gemShine: '#f8d080',
+  obsRed:   '#c04040',
+  obsDark:  '#802020',
+  obsYellow:'#d0a020',
+  text:     '#3a3530',
+  textLight:'#6b6560',
+  shadow:   '#b0a898',
+  platform: '#a09080',
+  platTop:  '#b8a898',
+  white:    '#f5f0e8',
+};
 
-  // ── Input ──────────────────────────────────────────────
-  const keys = {};
-  document.addEventListener('keydown', e => {
-    keys[e.key] = true;
-    if (e.key === ' ' || e.key === 'ArrowUp') e.preventDefault();
+// ── State ──────────────────────────────────────────────
+let state = 'start'; // start | playing | paused | levelup | gameover
+let score = 0, highScore = 0, lives = 3, level = 1;
+let frameCount = 0;
+
+// ── Input ──────────────────────────────────────────────
+const keys = {};
+document.addEventListener('keydown', e => {
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+  if (!keys[e.key]) {
     if ((e.key === ' ' || e.key === 'Enter') && state === 'start') startGame();
+    if (e.key === 'p' || e.key === 'P') {
+      if (state === 'playing') { state = 'paused'; }
+      else if (state === 'paused') { state = 'playing'; }
+    }
     if (e.key === 'r' || e.key === 'R') restartGame();
-    if ((e.key === 'p' || e.key === 'P') && state === 'playing') { state = 'paused'; showMessage('⏸ ポーズ'); }
-    else if ((e.key === 'p' || e.key === 'P') && state === 'paused') { state = 'playing'; hideMessage(); }
-  });
-  document.addEventListener('keyup', e => { keys[e.key] = false; });
+  }
+  keys[e.key] = true;
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
 
-  // ── World ──────────────────────────────────────────────
-  const GRAVITY = 0.55, GROUND_Y = 340;
-  let scrollX = 0, scrollSpeed = 2.5;
+// ── World constants ────────────────────────────────────
+const GRAVITY = 0.5;
+const GROUND_Y = 276; // top of ground surface
+let scrollX = 0;
+let scrollSpeed = 2.2;
 
-  // ── Claude Player ──────────────────────────────────────
-  const player = {
-    x: 100, y: GROUND_Y, w: 48, h: 56,
-    vx: 0, vy: 0,
-    onGround: false, jumping: false,
-    jumpCount: 0, maxJumps: 2,
-    invincible: 0, blinkTimer: 0,
-    frame: 0, frameTimer: 0,
+// ── Pixel character drawing ────────────────────────────
+// Grid: each cell = PIXEL_SIZE px
+const PS = 4; // pixel size
 
-    reset() {
-      this.x = 100; this.y = GROUND_Y; this.vx = 0; this.vy = 0;
-      this.onGround = false; this.jumping = false; this.jumpCount = 0;
-      this.invincible = 0; this.blinkTimer = 0;
-    },
+function drawPixelRect(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.round(x), Math.round(y), w, h);
+}
 
-    update() {
-      // Horizontal movement
-      if (keys['ArrowLeft'] || keys['a']) this.vx = -4.5;
-      else if (keys['ArrowRight'] || keys['d']) this.vx = 4.5;
-      else this.vx = 0;
+// Character pixel map (16×20 grid, PS=4 → 64×80 px but we use 12×16)
+// We'll draw it procedurally to match the screenshot
+function drawChar(cx, cy, frame, onGround, invincible, blinkTimer) {
+  if (invincible > 0 && Math.floor(blinkTimer / 4) % 2 === 1) return;
 
-      // Jump
-      if ((keys['ArrowUp'] || keys[' '] || keys['w']) && !this.jumping) {
-        if (this.jumpCount < this.maxJumps) {
-          this.vy = -13.5;
-          this.jumpCount++;
-          this.jumping = true;
-        }
+  // Leg animation
+  const legPhase = onGround ? Math.floor(frame / 2) % 2 : 0;
+
+  // Shadow
+  drawPixelRect(cx + 4, cy + 48, 32, 4, C.shadow);
+
+  // === Body (main block 32×24) ===
+  drawPixelRect(cx + 4, cy + 16, 32, 24, C.char);
+  // bottom shadow strip
+  drawPixelRect(cx + 4, cy + 36, 32, 4, C.charDark);
+
+  // === Arms (horizontal stubs) ===
+  // Left arm
+  drawPixelRect(cx,      cy + 20, 8, 12, C.char);
+  drawPixelRect(cx,      cy + 28, 8, 4,  C.charDark);
+  // Right arm
+  drawPixelRect(cx + 32, cy + 20, 8, 12, C.char);
+  drawPixelRect(cx + 32, cy + 28, 8, 4,  C.charDark);
+
+  // === Head (28×20, centered above body) ===
+  drawPixelRect(cx + 6, cy, 28, 20, C.char);
+  // head bottom shadow
+  drawPixelRect(cx + 6, cy + 16, 28, 4, C.charDark);
+  // head top highlight
+  drawPixelRect(cx + 6, cy, 28, 4, C.char);
+
+  // === Eyes (2 black squares) ===
+  drawPixelRect(cx + 12, cy + 6, 5, 6, C.charEye);
+  drawPixelRect(cx + 23, cy + 6, 5, 6, C.charEye);
+  // eye shine
+  drawPixelRect(cx + 13, cy + 7, 2, 2, C.white);
+  drawPixelRect(cx + 24, cy + 7, 2, 2, C.white);
+
+  // === Legs ===
+  if (legPhase === 0) {
+    // standing/right
+    drawPixelRect(cx + 8,  cy + 40, 10, 12, C.char);
+    drawPixelRect(cx + 22, cy + 40, 10, 12, C.char);
+    drawPixelRect(cx + 8,  cy + 48, 10, 4,  C.charDark);
+    drawPixelRect(cx + 22, cy + 48, 10, 4,  C.charDark);
+  } else {
+    // walking step
+    drawPixelRect(cx + 8,  cy + 40, 10, 8,  C.char);
+    drawPixelRect(cx + 22, cy + 40, 10, 16, C.char);
+    drawPixelRect(cx + 8,  cy + 44, 10, 4,  C.charDark);
+    drawPixelRect(cx + 22, cy + 52, 10, 4,  C.charDark);
+  }
+}
+
+// ── Player ─────────────────────────────────────────────
+const PW = 40, PH = 52; // collision box (slightly smaller than sprite)
+const player = {
+  x: 80, y: GROUND_Y - PH,
+  vx: 0, vy: 0,
+  onGround: false,
+  jumpCount: 0, maxJumps: 2,
+  jumpHeld: false,
+  invincible: 0, blinkTimer: 0,
+  frame: 0, frameTimer: 0,
+  moving: false,
+
+  reset() {
+    this.x = 80; this.y = GROUND_Y - PH;
+    this.vx = 0; this.vy = 0;
+    this.onGround = false; this.jumpCount = 0;
+    this.invincible = 0; this.blinkTimer = 0;
+    this.frame = 0;
+  },
+
+  update() {
+    // Move
+    this.moving = false;
+    if (keys['ArrowLeft']) { this.vx = -4; this.moving = true; }
+    else if (keys['ArrowRight']) { this.vx = 4; this.moving = true; }
+    else this.vx = 0;
+
+    // Jump
+    const jumpKey = keys['ArrowUp'] || keys[' '];
+    if (jumpKey && !this.jumpHeld) {
+      if (this.jumpCount < this.maxJumps) {
+        this.vy = -12;
+        this.jumpCount++;
+        this.jumpHeld = true;
+        spawnParticles(this.x + PW/2, this.y + PH, C.shadow, 4, 'dust');
       }
-      if (!keys['ArrowUp'] && !keys[' '] && !keys['w']) {
-        this.jumping = false;
-      }
+    }
+    if (!jumpKey) this.jumpHeld = false;
 
-      this.vy += GRAVITY;
-      this.x += this.vx;
-      this.y += this.vy;
+    this.vy += GRAVITY;
+    if (this.vy > 14) this.vy = 14;
+    this.x += this.vx;
+    this.y += this.vy;
 
-      // Ground collision
-      if (this.y >= GROUND_Y) {
-        this.y = GROUND_Y;
+    this.onGround = false;
+
+    // Ground
+    if (this.y + PH >= GROUND_Y) {
+      this.y = GROUND_Y - PH;
+      this.vy = 0;
+      this.onGround = true;
+      this.jumpCount = 0;
+    }
+
+    // Platform collision
+    for (const p of platforms) {
+      const px = p.x - scrollX;
+      if (this.x + PW > px + 2 && this.x < px + p.w - 2 &&
+          this.y + PH > p.y && this.y + PH < p.y + 20 && this.vy >= 0) {
+        this.y = p.y - PH;
         this.vy = 0;
         this.onGround = true;
         this.jumpCount = 0;
-      } else { this.onGround = false; }
-
-      // Clamp x
-      if (this.x < 0) this.x = 0;
-      if (this.x > canvas.width - this.w) this.x = canvas.width - this.w;
-
-      // Platform collision
-      for (const p of platforms) {
-        const px = p.x - scrollX;
-        if (this.x + this.w > px && this.x < px + p.w &&
-            this.y + this.h > p.y && this.y + this.h < p.y + p.h + 12 &&
-            this.vy >= 0) {
-          this.y = p.y - this.h;
-          this.vy = 0;
-          this.onGround = true;
-          this.jumpCount = 0;
-        }
       }
+    }
 
-      // Invincibility countdown
-      if (this.invincible > 0) this.invincible--;
-      this.blinkTimer++;
+    // Clamp x
+    if (this.x < 4) this.x = 4;
+    if (this.x + PW > canvas.width - 4) this.x = canvas.width - 4 - PW;
 
-      // Animation
+    // Timers
+    if (this.invincible > 0) this.invincible--;
+    this.blinkTimer++;
+
+    // Walk animation
+    if (this.moving && this.onGround) {
       this.frameTimer++;
-      if (this.frameTimer > 8) { this.frame = (this.frame + 1) % 4; this.frameTimer = 0; }
-    },
+      if (this.frameTimer > 7) { this.frame = (this.frame + 1) % 4; this.frameTimer = 0; }
+    } else if (!this.moving) { this.frame = 0; this.frameTimer = 0; }
+  },
 
-    draw() {
-      if (this.invincible > 0 && Math.floor(this.blinkTimer / 4) % 2 === 0) return;
-      drawClaude(this.x, this.y, this.w, this.h, this.frame, this.onGround, this.vx);
+  draw() {
+    // Sprite offset: draw centered on collision box
+    drawChar(this.x - 2, this.y - 4, this.frame, this.onGround, this.invincible, this.blinkTimer);
+  }
+};
+
+// ── Platforms ──────────────────────────────────────────
+let platforms = [];
+let nextPlatX = 700;
+
+function spawnPlatform() {
+  const w = (5 + Math.floor(Math.random() * 5)) * 16;
+  const y = 160 + Math.floor(Math.random() * 3) * 28;
+  platforms.push({ x: nextPlatX + scrollX, y, w });
+  nextPlatX += w + 100 + Math.random() * 160;
+}
+
+function initPlatforms() {
+  platforms = [];
+  nextPlatX = 480;
+  for (let i = 0; i < 5; i++) spawnPlatform();
+}
+
+function updatePlatforms() {
+  platforms = platforms.filter(p => p.x - scrollX > -400);
+  while (nextPlatX < canvas.width + 300) spawnPlatform();
+}
+
+function drawPlatforms() {
+  for (const p of platforms) {
+    const px = Math.round(p.x - scrollX);
+    // shadow
+    ctx.fillStyle = C.shadow;
+    ctx.fillRect(px + 4, p.y + 12, p.w, 6);
+    // body
+    ctx.fillStyle = C.platform;
+    ctx.fillRect(px, p.y + 4, p.w, 12);
+    // top highlight
+    ctx.fillStyle = C.platTop;
+    ctx.fillRect(px, p.y, p.w, 8);
+    // pixel dither top edge
+    ctx.fillStyle = C.shadow;
+    for (let dx = 0; dx < p.w; dx += 8) ctx.fillRect(px + dx, p.y, 4, 2);
+  }
+}
+
+// ── Gems ───────────────────────────────────────────────
+let gems = [];
+let gemTimer = 0;
+
+function initGems() { gems = []; gemTimer = 0; }
+
+function updateGems() {
+  gemTimer++;
+  if (gemTimer > Math.max(40, 80 - level * 5)) {
+    gemTimer = 0;
+    // Spawn on platform or ground
+    const onPlat = platforms[Math.floor(Math.random() * platforms.length)];
+    if (onPlat) {
+      gems.push({ x: onPlat.x + onPlat.w / 2, y: onPlat.y - 18, anim: 0, collected: false });
+    } else {
+      gems.push({ x: scrollX + canvas.width + 80 + Math.random() * 200,
+                  y: GROUND_Y - 20, anim: 0, collected: false });
     }
-  };
+  }
 
-  // ── Draw Claude character ──────────────────────────────
-  function drawClaude(x, y, w, h, frame, onGround, vx) {
-    ctx.save();
-    // Body (rounded rect)
-    const bodyColor = '#7c3aed';
-    const faceColor = '#f3e8ff';
-    // Legs
-    const legOffset = onGround ? Math.sin(frame * Math.PI / 2) * 6 : 0;
-    ctx.fillStyle = '#5b21b6';
-    ctx.beginPath(); ctx.roundRect(x + 8, y + h - 16, 12, 16, 4); ctx.fill();
-    ctx.beginPath(); ctx.roundRect(x + w - 20, y + h - 16, 12, 16, 4); ctx.fill();
-    // Shoes
-    ctx.fillStyle = '#1e1b4b';
-    ctx.beginPath(); ctx.ellipse(x + 14, y + h, 9, 5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(x + w - 14, y + h, 9, 5, 0, 0, Math.PI * 2); ctx.fill();
-    // Body
-    ctx.fillStyle = bodyColor;
-    ctx.beginPath(); ctx.roundRect(x + 4, y + 18, w - 8, h - 22, 8); ctx.fill();
-    // Gradient overlay
-    const grad = ctx.createLinearGradient(x, y, x + w, y + h);
-    grad.addColorStop(0, 'rgba(167,139,250,0.3)');
-    grad.addColorStop(1, 'rgba(109,40,217,0.1)');
-    ctx.fillStyle = grad;
-    ctx.beginPath(); ctx.roundRect(x + 4, y + 18, w - 8, h - 22, 8); ctx.fill();
-    // Arms
-    const armSwing = onGround ? Math.sin(frame * Math.PI / 2) * 5 : 3;
-    ctx.fillStyle = bodyColor;
-    ctx.beginPath(); ctx.roundRect(x - 2, y + 22 - armSwing, 10, 20, 5); ctx.fill();
-    ctx.beginPath(); ctx.roundRect(x + w - 8, y + 22 + armSwing, 10, 20, 5); ctx.fill();
-    // Head
-    ctx.fillStyle = faceColor;
-    ctx.beginPath(); ctx.roundRect(x + 6, y - 2, w - 12, 26, 12); ctx.fill();
-    // Eyes
-    const eyeY = y + 8;
-    ctx.fillStyle = '#6d28d9';
-    ctx.beginPath(); ctx.ellipse(x + 16, eyeY, 4, 5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(x + w - 16, eyeY, 4, 5, 0, 0, Math.PI * 2); ctx.fill();
-    // Eye shine
-    ctx.fillStyle = 'white';
-    ctx.beginPath(); ctx.ellipse(x + 17.5, eyeY - 1.5, 1.5, 1.5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(x + w - 14.5, eyeY - 1.5, 1.5, 1.5, 0, 0, Math.PI * 2); ctx.fill();
-    // Smile
-    ctx.strokeStyle = '#6d28d9';
-    ctx.lineWidth = 1.5;
+  for (const g of gems) {
+    g.anim += 0.07;
+    const gx = g.x - scrollX;
+    const gy = g.y + Math.sin(g.anim) * 4;
+    if (!g.collected &&
+        gx + 12 > player.x && gx - 12 < player.x + PW &&
+        gy + 12 > player.y && gy - 12 < player.y + PH) {
+      g.collected = true;
+      score += 10 * level;
+      spawnParticles(gx, gy, C.gem, 8, 'gem');
+    }
+  }
+  gems = gems.filter(g => !g.collected && g.x - scrollX > -100);
+}
+
+function drawGems() {
+  for (const g of gems) {
+    if (g.collected) continue;
+    const gx = Math.round(g.x - scrollX);
+    const gy = Math.round(g.y + Math.sin(g.anim) * 4);
+    const s = 10;
+    // Shadow
+    ctx.fillStyle = C.shadow;
+    ctx.fillRect(gx - s + 2, gy + s + 2, s * 2, 4);
+    // Diamond
+    ctx.fillStyle = C.gem;
     ctx.beginPath();
-    ctx.arc(x + w / 2, y + 14, 5, 0.1, Math.PI - 0.1);
-    ctx.stroke();
-    // "A" logo on chest
-    ctx.fillStyle = '#e9d5ff';
-    ctx.font = `bold ${Math.floor(w * 0.4)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('A', x + w / 2, y + h - 22);
-    // Sparkle when jumping
-    if (!onGround) {
-      ctx.fillStyle = '#a78bfa88';
-      for (let i = 0; i < 3; i++) {
-        const sx = x + 10 + i * 14, sy = y + h + 4;
-        ctx.beginPath();
-        ctx.arc(sx, sy, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
+    ctx.moveTo(gx, gy - s);
+    ctx.lineTo(gx + s, gy);
+    ctx.lineTo(gx, gy + s);
+    ctx.lineTo(gx - s, gy);
+    ctx.closePath(); ctx.fill();
+    // Shine
+    ctx.fillStyle = C.gemShine;
+    ctx.beginPath();
+    ctx.moveTo(gx - 2, gy - s + 2);
+    ctx.lineTo(gx + 3, gy - 2);
+    ctx.lineTo(gx - 2, gy + 2);
+    ctx.closePath(); ctx.fill();
+    // Pixel outline
+    ctx.strokeStyle = C.charDark;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(gx, gy - s);
+    ctx.lineTo(gx + s, gy);
+    ctx.lineTo(gx, gy + s);
+    ctx.lineTo(gx - s, gy);
+    ctx.closePath(); ctx.stroke();
   }
+}
 
-  // ── Platforms ──────────────────────────────────────────
-  let platforms = [];
-  let nextPlatformX = 900;
+// ── Obstacles ──────────────────────────────────────────
+let obstacles = [];
+let obsTimer = 0;
 
-  function spawnPlatform() {
-    const w = 80 + Math.random() * 120;
-    const y = 200 + Math.random() * 100;
-    platforms.push({ x: nextPlatformX + scrollX, y, w, h: 18, hasGem: Math.random() < 0.4 });
-    nextPlatformX += w + 120 + Math.random() * 160;
+function initObstacles() { obstacles = []; obsTimer = 0; }
+
+// Pixel-art obstacle draw functions
+function drawBug(ox, oy, anim) {
+  // Body
+  const legBob = Math.sin(anim * 4) * 2;
+  // Shadow
+  ctx.fillStyle = C.shadow;
+  ctx.fillRect(ox + 2, oy + 28, 28, 4);
+  // Body
+  ctx.fillStyle = C.obsRed;
+  ctx.fillRect(ox + 4, oy + 8, 24, 18);
+  // Shell highlight
+  ctx.fillStyle = '#d05050';
+  ctx.fillRect(ox + 4, oy + 8, 24, 6);
+  // Underbelly
+  ctx.fillStyle = C.obsDark;
+  ctx.fillRect(ox + 4, oy + 22, 24, 4);
+  // Head
+  ctx.fillStyle = C.obsRed;
+  ctx.fillRect(ox + 8, oy, 16, 12);
+  // Eyes
+  ctx.fillStyle = C.charEye;
+  ctx.fillRect(ox + 10, oy + 3, 4, 5);
+  ctx.fillRect(ox + 18, oy + 3, 4, 5);
+  ctx.fillStyle = C.white;
+  ctx.fillRect(ox + 11, oy + 4, 2, 2);
+  ctx.fillRect(ox + 19, oy + 4, 2, 2);
+  // Legs
+  ctx.fillStyle = C.obsDark;
+  ctx.fillRect(ox,      oy + 12 + legBob, 6, 3);
+  ctx.fillRect(ox + 26, oy + 12 - legBob, 6, 3);
+  ctx.fillRect(ox,      oy + 18 - legBob, 6, 3);
+  ctx.fillRect(ox + 26, oy + 18 + legBob, 6, 3);
+}
+
+function drawSpike(ox, oy, anim) {
+  const bob = Math.sin(anim * 2) * 3;
+  // Shadow
+  ctx.fillStyle = C.shadow;
+  ctx.fillRect(ox + 2, oy + 30, 28, 4);
+  // Body
+  ctx.fillStyle = C.obsYellow;
+  ctx.fillRect(ox + 6, oy + 8 + bob, 20, 20);
+  ctx.fillStyle = '#e8b830';
+  ctx.fillRect(ox + 6, oy + 8 + bob, 20, 6);
+  // Spikes on top
+  ctx.fillStyle = C.obsDark;
+  for (let i = 0; i < 3; i++) {
+    const sx = ox + 6 + i * 8;
+    ctx.beginPath();
+    ctx.moveTo(sx + 4, oy + bob);
+    ctx.lineTo(sx, oy + 10 + bob);
+    ctx.lineTo(sx + 8, oy + 10 + bob);
+    ctx.closePath(); ctx.fill();
   }
+  // Face
+  ctx.fillStyle = C.charEye;
+  ctx.fillRect(ox + 10, oy + 14 + bob, 4, 5);
+  ctx.fillRect(ox + 18, oy + 14 + bob, 4, 5);
+  // Angry brows
+  ctx.fillStyle = C.charEye;
+  ctx.fillRect(ox + 9,  oy + 12 + bob, 6, 2);
+  ctx.fillRect(ox + 17, oy + 12 + bob, 6, 2);
+  // mouth
+  ctx.fillStyle = C.obsDark;
+  ctx.fillRect(ox + 11, oy + 22 + bob, 10, 3);
+}
 
-  function initPlatforms() {
-    platforms = [];
-    nextPlatformX = 500;
-    for (let i = 0; i < 6; i++) spawnPlatform();
+function drawObstacles() {
+  for (const o of obstacles) {
+    const ox = Math.round(o.x - scrollX);
+    const oy = o.y;
+    o.name === 'bug' ? drawBug(ox, oy, o.anim) : drawSpike(ox, oy, o.anim);
   }
+}
 
-  function updatePlatforms() {
-    // Remove off-screen
-    platforms = platforms.filter(p => p.x - scrollX > -300);
-    // Spawn new
-    while (nextPlatformX < 1200) spawnPlatform();
-  }
-
-  function drawPlatforms() {
-    for (const p of platforms) {
-      const px = p.x - scrollX;
-      // Shadow
-      ctx.fillStyle = '#2d1b6944';
-      ctx.beginPath(); ctx.roundRect(px + 4, p.y + 6, p.w, p.h, 6); ctx.fill();
-      // Platform body
-      const grad = ctx.createLinearGradient(px, p.y, px, p.y + p.h);
-      grad.addColorStop(0, '#7c3aed');
-      grad.addColorStop(1, '#4c1d95');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.roundRect(px, p.y, p.w, p.h, 6); ctx.fill();
-      // Top highlight
-      ctx.fillStyle = '#a78bfa55';
-      ctx.beginPath(); ctx.roundRect(px + 4, p.y + 2, p.w - 8, 4, 3); ctx.fill();
-    }
-  }
-
-  // ── Gems (collectibles) ────────────────────────────────
-  let gems = [];
-  let gemSpawnTimer = 0;
-
-  function spawnGem(x, y) {
-    gems.push({ x, y: y - 30, vy: 0, collected: false, anim: Math.random() * Math.PI * 2 });
-  }
-
-  function initGems() {
-    gems = [];
-    gemSpawnTimer = 0;
-  }
-
-  function updateGems() {
-    gemSpawnTimer++;
-    if (gemSpawnTimer > 60 - level * 3) {
-      gemSpawnTimer = 0;
-      gems.push({
-        x: scrollX + 900 + Math.random() * 200,
-        y: 220 + Math.random() * 80,
-        vy: 0, collected: false, anim: Math.random() * Math.PI * 2
-      });
-    }
-    for (const g of gems) {
-      g.anim += 0.06;
-      const gx = g.x - scrollX;
-      // Collision with player
-      if (!g.collected &&
-          Math.abs(gx + 12 - (player.x + player.w / 2)) < 28 &&
-          Math.abs(g.y + 12 - (player.y + player.h / 2)) < 28) {
-        g.collected = true;
-        score += 10 * level;
-        spawnParticles(gx, g.y, '#fbbf24', 8);
-      }
-    }
-    gems = gems.filter(g => !g.collected && g.x - scrollX > -100);
-  }
-
-  function drawGems() {
-    for (const g of gems) {
-      if (g.collected) continue;
-      const gx = g.x - scrollX;
-      const bob = Math.sin(g.anim) * 5;
-      ctx.save();
-      ctx.translate(gx + 12, g.y + 12 + bob);
-      ctx.rotate(g.anim * 0.5);
-      // Glow
-      ctx.shadowColor = '#fbbf24';
-      ctx.shadowBlur = 12;
-      // Diamond shape
-      ctx.fillStyle = '#fde68a';
-      ctx.beginPath();
-      ctx.moveTo(0, -12); ctx.lineTo(10, 0); ctx.lineTo(0, 12); ctx.lineTo(-10, 0);
-      ctx.closePath(); ctx.fill();
-      ctx.fillStyle = '#fbbf2488';
-      ctx.beginPath();
-      ctx.moveTo(-3, -8); ctx.lineTo(3, -8); ctx.lineTo(6, 0); ctx.lineTo(0, 8); ctx.lineTo(-6, 0);
-      ctx.closePath(); ctx.fill();
-      ctx.restore();
-    }
-  }
-
-  // ── Obstacles (enemies) ────────────────────────────────
-  let obstacles = [];
-  let obstacleSpawnTimer = 0;
-
-  const OBSTACLE_TYPES = [
-    { name: 'bug', color: '#ef4444', w: 36, h: 36, speed: 2.5, points: 0 },
-    { name: 'glitch', color: '#f97316', w: 28, h: 44, speed: 3.5, points: 0 },
-    { name: 'error', color: '#dc2626', w: 50, h: 30, speed: 2, points: 0 },
-  ];
-
-  function spawnObstacle() {
-    const t = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
+function updateObstacles() {
+  obsTimer++;
+  const interval = Math.max(40, 90 - level * 8);
+  if (obsTimer > interval) {
+    obsTimer = 0;
+    const isBug = Math.random() < 0.6;
     obstacles.push({
-      ...t,
-      x: scrollX + canvas.width + 60,
-      y: GROUND_Y + 56 - t.h,
-      anim: 0,
-      dead: false
+      name: isBug ? 'bug' : 'spike',
+      x: scrollX + canvas.width + 50,
+      y: GROUND_Y - (isBug ? 28 : 30),
+      w: 32, h: 28,
+      speed: 2 + level * 0.35 + Math.random() * 0.5,
+      anim: 0, dead: false
     });
   }
 
-  function initObstacles() { obstacles = []; obstacleSpawnTimer = 0; }
-
-  function updateObstacles() {
-    obstacleSpawnTimer++;
-    const interval = Math.max(50, 110 - level * 8);
-    if (obstacleSpawnTimer > interval) {
-      obstacleSpawnTimer = 0;
-      spawnObstacle();
-    }
-    for (const o of obstacles) {
-      o.x -= (o.speed + level * 0.4 + scrollSpeed * 0.2);
-      o.anim += 0.12;
-      const ox = o.x - scrollX;
-      // Collision with player
-      if (!o.dead && player.invincible === 0 &&
-          ox + o.w > player.x + 6 && ox < player.x + player.w - 6 &&
-          o.y < player.y + player.h - 4 && o.y + o.h > player.y + 10) {
-        o.dead = true;
-        player.invincible = 100;
-        lives--;
-        spawnParticles(player.x + player.w / 2, player.y + player.h / 2, '#ef4444', 12);
-        updateUI();
-        if (lives <= 0) { state = 'gameover'; showMessage('GAME OVER\nRキーでリスタート'); }
-      }
-    }
-    obstacles = obstacles.filter(o => o.x - scrollX > -100);
-  }
-
-  function drawObstacle(o) {
+  for (const o of obstacles) {
+    o.x -= o.speed;
+    o.anim += 0.1;
     const ox = o.x - scrollX;
-    ctx.save();
-    ctx.translate(ox + o.w / 2, o.y + o.h / 2);
-    if (o.name === 'bug') {
-      // Bug character
-      ctx.shadowColor = o.color;
-      ctx.shadowBlur = 8;
-      ctx.fillStyle = o.color;
-      ctx.beginPath(); ctx.roundRect(-o.w/2, -o.h/2, o.w, o.h, 8); ctx.fill();
-      ctx.fillStyle = '#fee2e2';
-      ctx.font = 'bold 20px sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('🐛', 0, 2);
-      // Legs
-      ctx.strokeStyle = o.color;
-      ctx.lineWidth = 2;
-      for (let i = -1; i <= 1; i += 2) {
-        const legAnim = Math.sin(o.anim + i) * 6;
-        ctx.beginPath();
-        ctx.moveTo(i * (o.w/2), -4);
-        ctx.lineTo(i * (o.w/2 + 10), -4 + legAnim);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(i * (o.w/2), 4);
-        ctx.lineTo(i * (o.w/2 + 10), 4 - legAnim);
-        ctx.stroke();
-      }
-    } else if (o.name === 'glitch') {
-      ctx.shadowColor = o.color;
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = o.color;
-      // Glitchy rectangle
-      const g = Math.sin(o.anim * 3) * 3;
-      ctx.fillRect(-o.w/2 + g, -o.h/2, o.w, o.h);
-      ctx.fillStyle = '#1e1b4b88';
-      ctx.fillRect(-o.w/2, -o.h/2 + 8, o.w, 4);
-      ctx.fillRect(-o.w/2, o.h/2 - 12, o.w, 4);
-      ctx.fillStyle = 'white';
-      ctx.font = 'bold 14px monospace';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('ERR', 0, 0);
-    } else {
-      // Error
-      ctx.shadowColor = o.color;
-      ctx.shadowBlur = 12;
-      ctx.fillStyle = o.color;
-      ctx.beginPath();
-      for (let i = 0; i < 8; i++) {
-        const angle = (i / 8) * Math.PI * 2 + o.anim;
-        const r = i % 2 === 0 ? o.w / 2 : o.w / 3;
-        const px = Math.cos(angle) * r, py = Math.sin(angle) * r * 0.6;
-        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-      }
-      ctx.closePath(); ctx.fill();
-      ctx.fillStyle = 'white';
-      ctx.font = 'bold 16px sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('!', 0, 0);
-    }
-    ctx.restore();
-  }
-
-  function drawObstacles() { obstacles.forEach(drawObstacle); }
-
-  // ── Particles ──────────────────────────────────────────
-  let particles = [];
-  function spawnParticles(x, y, color, count) {
-    for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.5;
-      const speed = 2 + Math.random() * 4;
-      particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 2,
-        life: 40 + Math.random() * 20,
-        maxLife: 60,
-        color, size: 4 + Math.random() * 4
-      });
-    }
-  }
-
-  function updateParticles() {
-    for (const p of particles) {
-      p.x += p.vx; p.y += p.vy;
-      p.vy += 0.15;
-      p.life--;
-    }
-    particles = particles.filter(p => p.life > 0);
-  }
-
-  function drawParticles() {
-    for (const p of particles) {
-      ctx.save();
-      ctx.globalAlpha = p.life / p.maxLife;
-      ctx.fillStyle = p.color;
-      ctx.shadowColor = p.color;
-      ctx.shadowBlur = 6;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size * (p.life / p.maxLife), 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-  }
-
-  // ── Background ─────────────────────────────────────────
-  function drawBackground() {
-    // Sky gradient
-    const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    sky.addColorStop(0, '#0f0728');
-    sky.addColorStop(0.6, '#1e0a4a');
-    sky.addColorStop(1, '#2d1b69');
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Stars
-    ctx.fillStyle = 'white';
-    for (let i = 0; i < 80; i++) {
-      const sx = ((i * 137.5 + scrollX * 0.05) % canvas.width + canvas.width) % canvas.width;
-      const sy = (i * 73.1) % (GROUND_Y - 20);
-      const brightness = 0.4 + Math.sin(frameCount * 0.03 + i) * 0.3;
-      ctx.globalAlpha = brightness;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 1.2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-
-    // Distant clouds/nebulae
-    for (let i = 0; i < 5; i++) {
-      const cx = ((i * 200 - scrollX * 0.1 + 1000) % (canvas.width + 200)) - 100;
-      const cy = 60 + i * 30;
-      ctx.save();
-      ctx.globalAlpha = 0.08;
-      ctx.fillStyle = '#a855f7';
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, 80, 40, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    // Ground
-    const groundGrad = ctx.createLinearGradient(0, GROUND_Y + 56, 0, canvas.height);
-    groundGrad.addColorStop(0, '#4c1d95');
-    groundGrad.addColorStop(1, '#1e0a4a');
-    ctx.fillStyle = groundGrad;
-    ctx.fillRect(0, GROUND_Y + 56, canvas.width, canvas.height - GROUND_Y - 56);
-
-    // Ground top highlight
-    ctx.fillStyle = '#7c3aed';
-    ctx.fillRect(0, GROUND_Y + 54, canvas.width, 6);
-    ctx.fillStyle = '#a78bfa44';
-    ctx.fillRect(0, GROUND_Y + 54, canvas.width, 2);
-
-    // Grid on ground
-    ctx.strokeStyle = '#5b21b633';
-    ctx.lineWidth = 1;
-    const gridSize = 40;
-    const offsetX = (scrollX * 0.3) % gridSize;
-    for (let gx = -offsetX; gx < canvas.width; gx += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(gx, GROUND_Y + 60);
-      ctx.lineTo(gx - 20, canvas.height);
-      ctx.stroke();
-    }
-  }
-
-  // ── HUD ────────────────────────────────────────────────
-  function updateUI() {
-    document.getElementById('score').textContent = score;
-    document.getElementById('highscore').textContent = highScore;
-    const hearts = '❤️'.repeat(Math.max(0, lives)) + '🖤'.repeat(Math.max(0, 3 - lives));
-    document.getElementById('lives').textContent = hearts;
-    document.getElementById('level').textContent = level;
-  }
-
-  function showMessage(text) {
-    const el = document.getElementById('message');
-    el.style.display = 'block';
-    el.innerHTML = text.replace('\n', '<br>');
-  }
-
-  function hideMessage() {
-    document.getElementById('message').style.display = 'none';
-  }
-
-  // ── Game flow ──────────────────────────────────────────
-  function startGame() {
-    state = 'playing';
-    hideMessage();
-  }
-
-  function restartGame() {
-    score = 0; lives = 3; level = 1; scrollX = 0; scrollSpeed = 2.5;
-    player.reset();
-    initPlatforms(); initGems(); initObstacles();
-    particles = [];
-    updateUI();
-    state = 'playing';
-    hideMessage();
-  }
-
-  let levelScoreThreshold = 200;
-
-  function checkLevelUp() {
-    if (score >= levelScoreThreshold) {
-      level++;
-      levelScoreThreshold = level * 250;
-      scrollSpeed += 0.3;
-      state = 'levelup';
-      showMessage(`Level ${level} !!`);
-      setTimeout(() => {
-        if (state === 'levelup') { state = 'playing'; hideMessage(); }
-      }, 1500);
+    if (!o.dead && player.invincible === 0 &&
+        ox + o.w - 4 > player.x + 4 && ox + 4 < player.x + PW - 4 &&
+        o.y + 4 < player.y + PH && o.y + o.h > player.y + 6) {
+      o.dead = true;
+      player.invincible = 90;
+      lives--;
+      spawnParticles(player.x + PW/2, player.y + PH/2, C.obsRed, 10, 'hit');
       updateUI();
-      spawnParticles(player.x + player.w / 2, player.y, '#a78bfa', 20);
+      if (lives <= 0) {
+        state = 'gameover';
+        if (score > highScore) highScore = Math.floor(score);
+      }
     }
   }
+  obstacles = obstacles.filter(o => !o.dead && o.x - scrollX > -100);
+}
 
-  // ── Draw start screen ──────────────────────────────────
-  function drawStartScreen() {
-    drawBackground();
-    // Claude standing
-    drawClaude(canvas.width / 2 - 24, GROUND_Y - 10, 48, 56, 0, true, 0);
-    // Title box
-    ctx.save();
-    ctx.globalAlpha = 0.85;
-    ctx.fillStyle = '#1e0a4a';
-    ctx.beginPath(); ctx.roundRect(160, 80, canvas.width - 320, 200, 16); ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = '#7c3aed';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.roundRect(160, 80, canvas.width - 320, 200, 16); ctx.stroke();
-
-    ctx.fillStyle = '#e9d5ff';
-    ctx.font = 'bold 36px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText("Claude's Adventure", canvas.width / 2, 140);
-    ctx.font = '16px sans-serif';
-    ctx.fillStyle = '#c4b5fd';
-    ctx.fillText('ジェムを集め、バグを避けろ！', canvas.width / 2, 180);
-    const pulse = 0.7 + Math.sin(frameCount * 0.08) * 0.3;
-    ctx.globalAlpha = pulse;
-    ctx.fillStyle = '#a78bfa';
-    ctx.font = 'bold 18px sans-serif';
-    ctx.fillText('スペースキー / Enter でスタート', canvas.width / 2, 230);
-    ctx.restore();
+// ── Particles ──────────────────────────────────────────
+let particles = [];
+function spawnParticles(x, y, color, count, type) {
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + Math.random() * 0.4;
+    const spd = type === 'dust' ? 1 + Math.random() * 2 : 2 + Math.random() * 4;
+    particles.push({
+      x, y, color,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd - (type === 'dust' ? 0 : 2),
+      life: 20 + Math.random() * 20,
+      maxLife: 40,
+      size: type === 'dust' ? 3 : 4,
+    });
   }
+}
 
-  // ── Main Loop ──────────────────────────────────────────
-  function update(dt) {
-    if (state !== 'playing') return;
-    frameCount++;
-
-    scrollX += scrollSpeed;
-    score += 0.05 * level;
-    highScore = Math.max(highScore, Math.floor(score));
-
-    player.update();
-    updatePlatforms();
-    updateGems();
-    updateObstacles();
-    updateParticles();
-    checkLevelUp();
-
-    if (Math.floor(score) % 10 === 0) updateUI();
+function updateParticles() {
+  for (const p of particles) {
+    p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.life--;
   }
+  particles = particles.filter(p => p.life > 0);
+}
 
-  function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+function drawParticles() {
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    const s = Math.round(p.size * alpha);
+    if (s > 0) ctx.fillRect(Math.round(p.x - s/2), Math.round(p.y - s/2), s, s);
+  }
+  ctx.globalAlpha = 1;
+}
 
-    if (state === 'start') { drawStartScreen(); return; }
+// ── Pixel-art clouds ───────────────────────────────────
+const cloudShapes = [
+  [0,1,1,1,0, 1,1,1,1,1, 1,1,1,1,1, 0,1,1,1,0],
+  [0,0,1,1,0,0, 0,1,1,1,1,0, 1,1,1,1,1,1, 0,1,1,1,1,0],
+  [0,1,1,0, 1,1,1,1, 1,1,1,1, 0,1,1,0],
+];
 
-    drawBackground();
-    drawPlatforms();
-    drawGems();
-    drawObstacles();
-    player.draw();
-    drawParticles();
-
-    if (state === 'gameover') {
-      ctx.save();
-      ctx.fillStyle = '#00000088';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.restore();
+function drawCloud(x, y, scale, shape, cols) {
+  const sz = scale * 8;
+  const rows = shape.length / cols;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (shape[r * cols + c]) {
+        ctx.fillRect(Math.round(x + c * sz), Math.round(y + r * sz), sz, sz);
+      }
     }
   }
+}
 
-  function loop(timestamp) {
-    const dt = timestamp - lastTime;
-    lastTime = timestamp;
-    update(dt);
-    draw();
-    requestAnimationFrame(loop);
+const cloudData = [
+  { ox: 80,  y: 50,  scale: 2, si: 0, cols: 5 },
+  { ox: 320, y: 30,  scale: 2, si: 1, cols: 6 },
+  { ox: 560, y: 60,  scale: 2, si: 2, cols: 4 },
+  { ox: 200, y: 110, scale: 1.5, si: 0, cols: 5 },
+  { ox: 440, y: 90,  scale: 1.5, si: 2, cols: 4 },
+];
+
+function drawBackground() {
+  // Sky
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Clouds (parallax 0.2)
+  ctx.fillStyle = C.cloud;
+  for (const cd of cloudData) {
+    const cx = ((cd.ox - scrollX * 0.2) % (canvas.width + 200) + canvas.width + 200) % (canvas.width + 200) - 100;
+    drawCloud(cx, cd.y, cd.scale, cloudShapes[cd.si], cd.cols);
   }
 
-  // ── Init ───────────────────────────────────────────────
-  initPlatforms();
-  initGems();
-  initObstacles();
+  // Ground
+  ctx.fillStyle = C.ground;
+  ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+
+  // Ground top edge (pixel highlight)
+  ctx.fillStyle = C.groundTop;
+  ctx.fillRect(0, GROUND_Y, canvas.width, 6);
+
+  // Ground dither pattern
+  ctx.fillStyle = C.shadow;
+  for (let gx = (-(scrollX * 0.5) % 16 + 16) % 16; gx < canvas.width; gx += 16) {
+    ctx.fillRect(Math.round(gx), GROUND_Y + 8, 8, 4);
+  }
+}
+
+// ── UI helpers ─────────────────────────────────────────
+function updateUI() {
+  document.getElementById('score').textContent = Math.floor(score);
+  document.getElementById('highscore').textContent = Math.floor(highScore);
+  document.getElementById('lives').textContent = '♥'.repeat(Math.max(0, lives)) + '♡'.repeat(Math.max(0, 3 - lives));
+  document.getElementById('level').textContent = level;
+}
+
+function drawPixelText(text, x, y, size, color) {
+  ctx.fillStyle = color;
+  ctx.font = `bold ${size}px 'Courier New', monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // Shadow
+  ctx.fillStyle = C.shadow;
+  ctx.fillText(text, x + 2, y + 2);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
+function drawBox(x, y, w, h) {
+  ctx.fillStyle = C.white;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = C.shadow;
+  ctx.fillRect(x + 4, y + 4, w, h);
+  ctx.fillStyle = C.white;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = C.text;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x, y, w, h);
+}
+
+// ── Game flow ──────────────────────────────────────────
+function startGame()  { state = 'playing'; }
+function restartGame() {
+  score = 0; lives = 3; level = 1; scrollX = 0; scrollSpeed = 2.2;
+  player.reset();
+  initPlatforms(); initGems(); initObstacles();
+  particles = [];
   updateUI();
-  showMessage('');
+  state = 'playing';
+}
+
+let levelThreshold = 150;
+function checkLevelUp() {
+  if (score >= levelThreshold) {
+    level++;
+    levelThreshold = level * 200;
+    scrollSpeed += 0.25;
+    state = 'levelup';
+    updateUI();
+    spawnParticles(player.x + PW/2, player.y, C.gem, 16, 'gem');
+    setTimeout(() => { if (state === 'levelup') state = 'playing'; }, 1600);
+  }
+}
+
+// ── Main loop ──────────────────────────────────────────
+function update() {
+  if (state !== 'playing') return;
+  frameCount++;
+  scrollX += scrollSpeed;
+  score += 0.04 * level;
+  highScore = Math.max(highScore, score);
+  player.update();
+  updatePlatforms();
+  updateGems();
+  updateObstacles();
+  updateParticles();
+  checkLevelUp();
+  if (frameCount % 8 === 0) updateUI();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawBackground();
+  drawPlatforms();
+  drawGems();
+  drawObstacles();
+  player.draw();
+  drawParticles();
+
+  if (state === 'start') {
+    // Draw char preview
+    drawChar(canvas.width/2 - 20, GROUND_Y - PH - 4, 0, true, 0, 0);
+    // Title box
+    drawBox(140, 60, canvas.width - 280, 170);
+    drawPixelText("CLAUDE'S ADVENTURE", canvas.width/2, 110, 20, C.text);
+    ctx.fillStyle = C.textLight;
+    ctx.font = '13px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('ジェムを集め、敵を避けろ！', canvas.width/2, 148);
+    const pulse = Math.floor(frameCount / 15) % 2 === 0;
+    ctx.fillStyle = pulse ? C.text : C.textLight;
+    ctx.font = 'bold 14px Courier New';
+    ctx.fillText('SPACE / ENTER でスタート', canvas.width/2, 196);
+  }
+
+  if (state === 'paused') {
+    ctx.fillStyle = '#0000003a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawBox(220, 140, 200, 80);
+    drawPixelText('PAUSED', canvas.width/2, 185, 22, C.text);
+  }
+
+  if (state === 'levelup') {
+    drawBox(180, 130, 280, 90);
+    drawPixelText(`LEVEL ${level}!`, canvas.width/2, 170, 24, C.obsYellow);
+    ctx.fillStyle = C.textLight;
+    ctx.font = '13px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('スピードアップ！', canvas.width/2, 200);
+  }
+
+  if (state === 'gameover') {
+    ctx.fillStyle = '#0000004a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawBox(150, 110, 340, 140);
+    drawPixelText('GAME OVER', canvas.width/2, 158, 26, C.obsRed);
+    ctx.fillStyle = C.text;
+    ctx.font = '14px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(`SCORE: ${Math.floor(score)}   BEST: ${Math.floor(highScore)}`, canvas.width/2, 198);
+    const pulse = Math.floor(frameCount / 15) % 2 === 0;
+    ctx.fillStyle = pulse ? C.text : C.textLight;
+    ctx.font = 'bold 14px Courier New';
+    ctx.fillText('R キーでリスタート', canvas.width/2, 228);
+  }
+}
+
+function loop() {
+  update();
+  draw();
   requestAnimationFrame(loop);
-  </script>
+}
+
+// ── Init ───────────────────────────────────────────────
+initPlatforms();
+initGems();
+initObstacles();
+updateUI();
+requestAnimationFrame(loop);
+</script>
 </body>
 </html>
