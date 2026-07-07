@@ -2,463 +2,372 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <title>Claude's Adventure</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#5b3a29">
+  <title>飲んだお酒リスト</title>
   <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    html { height:100%; }
+    :root {
+      --bg: #f7f3ee;
+      --card: #ffffff;
+      --ink: #2b2320;
+      --sub: #8a7d72;
+      --line: #e7ded4;
+      --accent: #a8542b;
+      --accent-soft: #f3e3d8;
+      --danger: #c0392b;
+      --shadow: 0 2px 10px rgba(80,50,30,.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1c1815;
+        --card: #292320;
+        --ink: #f2ebe4;
+        --sub: #a89a8d;
+        --line: #3a322c;
+        --accent: #e08a4f;
+        --accent-soft: #3a2c22;
+        --danger: #e57368;
+        --shadow: 0 2px 12px rgba(0,0,0,.3);
+      }
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
-      height:100%;
-      background:#222;
-      overflow:hidden;
-      user-select:none;
-      -webkit-user-select:none;
-      font-family:'Courier New',monospace;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+      line-height: 1.5;
+      padding: 0 0 40px;
+      max-width: 640px;
+      margin: 0 auto;
     }
-    #game {
-      position:relative;
-      width:100%;
-      height:100%;
-      display:flex;
-      align-items:center;
-      justify-content:center;
+    header {
+      padding: 22px 18px 16px;
+      text-align: center;
     }
-    canvas {
-      display:block;
-      /* size set by JS */
-      -webkit-tap-highlight-color:transparent;
+    header h1 { font-size: 1.35rem; letter-spacing: .04em; }
+    header p { color: var(--sub); font-size: .8rem; margin-top: 4px; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      padding: 0 14px 16px;
     }
-    /* ── Touch buttons (absolutely positioned by JS) ── */
-    .tb {
-      position:fixed;
-      display:none;        /* shown after first touch */
-      align-items:center;
-      justify-content:center;
-      background:rgba(180,160,140,0.5);
-      border:3px solid rgba(58,53,48,0.6);
-      border-radius:18px;
-      color:rgba(58,53,48,0.9);
-      font-weight:bold;
-      font-size:28px;
-      cursor:pointer;
-      -webkit-tap-highlight-color:transparent;
-      z-index:10;
+    .stat {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 12px 8px;
+      text-align: center;
+      box-shadow: var(--shadow);
     }
-    .tb.on { background:rgba(130,110,90,0.65); }
+    .stat .num { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
+    .stat .lbl { font-size: .68rem; color: var(--sub); margin-top: 2px; }
+
+    form {
+      background: var(--card);
+      border-radius: 16px;
+      margin: 0 14px 18px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+    .row { display: flex; gap: 10px; margin-bottom: 12px; }
+    .field { flex: 1; }
+    label { display: block; font-size: .72rem; color: var(--sub); margin-bottom: 4px; }
+    input, select, textarea {
+      width: 100%;
+      background: var(--bg);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 16px;
+      font-family: inherit;
+    }
+    textarea { resize: vertical; min-height: 44px; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    .btn {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 13px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn:active { opacity: .85; }
+
+    .list-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 0 20px 8px;
+    }
+    .list-head h2 { font-size: .95rem; }
+    .list-head .filter { font-size: .78rem; color: var(--accent); background: none; border: none; cursor: pointer; font-family: inherit; }
+
+    .entry {
+      background: var(--card);
+      border-radius: 14px;
+      margin: 0 14px 10px;
+      padding: 13px 15px;
+      box-shadow: var(--shadow);
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .entry .emoji { font-size: 1.6rem; line-height: 1; margin-top: 2px; }
+    .entry .body { flex: 1; min-width: 0; }
+    .entry .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .entry .name { font-weight: 600; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .entry .meta { color: var(--sub); font-size: .74rem; margin-top: 2px; }
+    .entry .tags { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag { background: var(--accent-soft); color: var(--accent); font-size: .68rem; padding: 2px 8px; border-radius: 20px; }
+    .entry .note { color: var(--sub); font-size: .78rem; margin-top: 6px; word-break: break-word; }
+    .entry .del { background: none; border: none; color: var(--sub); font-size: 1.1rem; cursor: pointer; padding: 0 2px; line-height: 1; }
+    .entry .del:active { color: var(--danger); }
+
+    .empty { text-align: center; color: var(--sub); padding: 40px 20px; font-size: .9rem; }
+    .rating { color: var(--accent); font-size: .8rem; }
+
+    .tools { display: flex; gap: 10px; padding: 18px 14px 0; }
+    .tools button {
+      flex: 1; background: none; border: 1px solid var(--line); color: var(--sub);
+      border-radius: 10px; padding: 10px; font-size: .8rem; cursor: pointer; font-family: inherit;
+    }
   </style>
 </head>
 <body>
-<div id="game">
-  <canvas id="cv"></canvas>
-</div>
-<!-- Touch buttons outside canvas so iOS receives them independently -->
-<div class="tb" id="tL">◀</div>
-<div class="tb" id="tR">▶</div>
-<div class="tb" id="tJ">▲</div>
+  <header>
+    <h1>🍶 飲んだお酒リスト</h1>
+    <p>飲んだお酒を記録して管理しよう</p>
+  </header>
 
-<script>
-// ── Canvas setup ──────────────────────────────────────
-const cv  = document.getElementById('cv');
-const ctx = cv.getContext('2d');
-ctx.imageSmoothingEnabled = false;
+  <div class="stats">
+    <div class="stat"><div class="num" id="stTotal">0</div><div class="lbl">総記録数</div></div>
+    <div class="stat"><div class="num" id="stMonth">0</div><div class="lbl">今月</div></div>
+    <div class="stat"><div class="num" id="stAlcohol">0<span style="font-size:.7rem">g</span></div><div class="lbl">純アルコール今月</div></div>
+  </div>
 
-const GW = 640, GH = 400;
-cv.width  = GW;
-cv.height = GH;
+  <form id="form">
+    <div class="row">
+      <div class="field" style="flex:1.3">
+        <label for="name">お酒の名前</label>
+        <input id="name" placeholder="例: 獺祭 純米大吟醸" required>
+      </div>
+      <div class="field">
+        <label for="type">種類</label>
+        <select id="type">
+          <option value="🍺">ビール 🍺</option>
+          <option value="🍶">日本酒 🍶</option>
+          <option value="🍷">ワイン 🍷</option>
+          <option value="🥃">ウイスキー 🥃</option>
+          <option value="🍸">カクテル 🍸</option>
+          <option value="🍹">サワー/酎ハイ 🍹</option>
+          <option value="🥂">スパークリング 🥂</option>
+          <option value="🧊">焼酎 🧊</option>
+          <option value="🍾">その他 🍾</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="date">飲んだ日</label>
+        <input id="date" type="date" required>
+      </div>
+      <div class="field">
+        <label for="volume">量 (ml)</label>
+        <input id="volume" type="number" inputmode="decimal" min="0" step="1" placeholder="350">
+      </div>
+      <div class="field">
+        <label for="abv">度数 (%)</label>
+        <input id="abv" type="number" inputmode="decimal" min="0" max="100" step="0.1" placeholder="5">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="rating">評価</label>
+        <select id="rating">
+          <option value="0">評価なし</option>
+          <option value="5">★★★★★</option>
+          <option value="4">★★★★</option>
+          <option value="3">★★★</option>
+          <option value="2">★★</option>
+          <option value="1">★</option>
+        </select>
+      </div>
+      <div class="field" style="flex:2">
+        <label for="note">メモ (場所・感想など)</label>
+        <input id="note" placeholder="家飲み / すっきり辛口で美味しかった">
+      </div>
+    </div>
+    <button class="btn" type="submit">＋ 記録する</button>
+  </form>
 
-let scale = 1;
-function resize() {
-  scale = Math.min(window.innerWidth / GW, window.innerHeight / GH);
-  const dw = Math.floor(GW * scale);
-  const dh = Math.floor(GH * scale);
-  cv.style.width  = dw + 'px';
-  cv.style.height = dh + 'px';
-  placeButtons(dw, dh);
-}
+  <div class="list-head">
+    <h2>記録一覧</h2>
+    <button class="filter" id="sortBtn">新しい順 ▾</button>
+  </div>
+  <div id="list"></div>
 
-function placeButtons(cw, ch) {
-  const ox = Math.floor((window.innerWidth  - cw) / 2);
-  const oy = Math.floor((window.innerHeight - ch) / 2);
-  const sz = Math.max(64, Math.floor(ch * 0.19));
-  const jz = Math.max(80, Math.floor(ch * 0.24));
-  const mg = Math.max(10, Math.floor(ch * 0.04));
+  <div class="tools">
+    <button id="exportBtn">エクスポート (JSON)</button>
+    <button id="importBtn">インポート</button>
+    <input id="importFile" type="file" accept="application/json,.json" style="display:none">
+  </div>
 
-  function place(id, left, bottom, w, h) {
-    const el = document.getElementById(id);
-    el.style.left   = (ox + left) + 'px';
-    el.style.top    = (oy + ch - bottom - h) + 'px';
-    el.style.width  = w + 'px';
-    el.style.height = h + 'px';
-  }
-  place('tL', mg,          mg, sz, sz);
-  place('tR', mg + sz + 12,mg, sz, sz);
-  place('tJ', cw - jz - mg, mg - 4, jz, jz);
-}
+  <script>
+    const KEY = 'drinkLog.v1';
+    const $ = id => document.getElementById(id);
+    let sortNewest = true;
 
-window.addEventListener('resize', resize);
-resize();
+    const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
+    const save = data => localStorage.setItem(KEY, JSON.stringify(data));
+    let entries = load();
 
-// ── Input: keyboard ───────────────────────────────────
-const K = {};
-document.addEventListener('keydown', e => {
-  K[e.code] = true;
-  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
-  if (e.code === 'KeyR') restart();
-  if (e.code === 'KeyP') { gs = gs === 'play' ? 'pause' : gs === 'pause' ? 'play' : gs; }
-});
-document.addEventListener('keyup', e => { K[e.code] = false; });
+    // default date = today
+    $('date').value = new Date().toISOString().slice(0, 10);
 
-// ── Input: touch (iOS-safe) ───────────────────────────
-const T = { L: false, R: false, J: false };
-let touchOn = false;
-
-function showButtons() {
-  if (touchOn) return;
-  touchOn = true;
-  ['tL','tR','tJ'].forEach(id => {
-    document.getElementById(id).style.display = 'flex';
-  });
-}
-
-// Wire each button with touchstart/touchend ON THE ELEMENT
-// iOS requires listener on the actual element, not document
-function wireBtn(id, onDown, onUp) {
-  const el = document.getElementById(id);
-
-  el.addEventListener('touchstart', function(e) {
-    e.preventDefault();
-    showButtons();
-    onDown();
-    el.classList.add('on');
-  }, { passive: false });
-
-  el.addEventListener('touchend', function(e) {
-    e.preventDefault();
-    onUp();
-    el.classList.remove('on');
-  }, { passive: false });
-
-  el.addEventListener('touchcancel', function(e) {
-    onUp();
-    el.classList.remove('on');
-  }, { passive: false });
-
-  // Mouse fallback for desktop testing
-  el.addEventListener('mousedown', function(e) { onDown(); el.classList.add('on'); });
-  el.addEventListener('mouseup',   function(e) { onUp();   el.classList.remove('on'); });
-  el.addEventListener('mouseleave',function(e) { onUp();   el.classList.remove('on'); });
-}
-
-wireBtn('tL', () => { T.L = true;  }, () => { T.L = false; });
-wireBtn('tR', () => { T.R = true;  }, () => { T.R = false; });
-wireBtn('tJ', () => { T.J = true;  }, () => { T.J = false; pl.jh = false; });
-
-// Detect first touch anywhere → show buttons
-document.addEventListener('touchstart', function(e) {
-  showButtons();
-  if (gs === 'over') restart();
-}, { passive: true });
-
-// Click for desktop restart
-cv.addEventListener('click', () => { if (gs === 'over') restart(); });
-
-// ── Colours ───────────────────────────────────────────
-const C = {
-  sky:'#eae6df', gnd:'#b8b0a4', gndT:'#c8c0b4', cld:'#c8c2ba',
-  chr:'#c1724f', chrD:'#9a5a3c', eye:'#2a2520',
-  gem:'#e8a030', gemS:'#f8d080',
-  red:'#c04040', redD:'#802020', yel:'#d0a020',
-  txt:'#3a3530', txtL:'#6b6560', shd:'#b0a898',
-  plt:'#a09080', pltT:'#b8a898', wht:'#f5f0e8', hud:'#ccc6be',
-};
-const r = (x,y,w,h,c) => { ctx.fillStyle=c; ctx.fillRect(Math.round(x),Math.round(y),w,h); };
-
-// ── Game state ────────────────────────────────────────
-let gs = 'play'; // play | pause | over
-let score=0, best=0, lives=3, lv=1, fc=0;
-let scrollX=0, spd=2.2;
-const GY = GH - 96;
-
-// ── Character draw ────────────────────────────────────
-function drawChr(cx,cy,fr,onG,inv,bl) {
-  if (inv>0 && Math.floor(bl/4)%2===1) return;
-  const lp = onG ? Math.floor(fr/2)%2 : 0;
-  r(cx+4, cy+48,32, 4,C.shd);
-  r(cx+4, cy+16,32,24,C.chr);  r(cx+4, cy+36,32,4,C.chrD);
-  r(cx,   cy+20, 8,12,C.chr);  r(cx,   cy+28, 8,4,C.chrD);
-  r(cx+32,cy+20, 8,12,C.chr);  r(cx+32,cy+28, 8,4,C.chrD);
-  r(cx+6, cy,   28,20,C.chr);  r(cx+6, cy+16,28,4,C.chrD);
-  r(cx+12,cy+6,  5, 6,C.eye);  r(cx+23,cy+6, 5,6,C.eye);
-  r(cx+13,cy+7,  2, 2,C.wht);  r(cx+24,cy+7, 2,2,C.wht);
-  if (lp===0){
-    r(cx+8, cy+40,10,12,C.chr); r(cx+22,cy+40,10,12,C.chr);
-    r(cx+8, cy+48,10, 4,C.chrD);r(cx+22,cy+48,10, 4,C.chrD);
-  } else {
-    r(cx+8, cy+40,10, 8,C.chr); r(cx+22,cy+40,10,16,C.chr);
-    r(cx+8, cy+44,10, 4,C.chrD);r(cx+22,cy+52,10, 4,C.chrD);
-  }
-}
-
-// ── Player ────────────────────────────────────────────
-const PW=40, PH=52;
-const pl = {
-  x:80, y:GY-PH, vx:0, vy:0,
-  onG:false, jc:0, jh:false,
-  inv:0, bl:0, fr:0, ft:0, mv:false,
-  reset() {
-    this.x=80; this.y=GY-PH; this.vx=0; this.vy=0;
-    this.onG=false; this.jc=0; this.jh=false;
-    this.inv=0; this.bl=0; this.fr=0; this.ft=0;
-  },
-  update() {
-    const goL = K['ArrowLeft'] ||K['KeyA']||T.L;
-    const goR = K['ArrowRight']||K['KeyD']||T.R;
-    const doJ = K['ArrowUp']||K['Space']||K['KeyW']||T.J;
-
-    this.mv = false;
-    if (goL)      { this.vx=-4.2; this.mv=true; }
-    else if (goR) { this.vx= 4.2; this.mv=true; }
-    else            this.vx=0;
-
-    if (doJ && !this.jh && this.jc<2) {
-      this.vy=-12.5; this.jc++; this.jh=true;
-      spawnFx(this.x+PW/2, this.y+PH, C.shd, 4, 'd');
+    function pureAlcoholGrams(volume, abv) {
+      if (!volume || !abv) return 0;
+      return volume * (abv / 100) * 0.8; // 純アルコール量(g) = 量ml × 度数/100 × 比重0.8
     }
-    if (!doJ) this.jh=false;
 
-    this.vy = Math.min(this.vy+0.52, 14);
-    this.x += this.vx; this.y += this.vy;
-    this.onG = false;
-
-    if (this.y+PH >= GY) {
-      this.y=GY-PH; this.vy=0; this.onG=true; this.jc=0;
+    function stars(n) {
+      n = Number(n) || 0;
+      return n ? '★★★★★'.slice(0, n) : '';
     }
-    for (const p of plats) {
-      const bx=p.x-scrollX;
-      if (this.x+PW>bx+2 && this.x<bx+p.w-2 && this.y+PH>p.y && this.y+PH<p.y+20 && this.vy>=0){
-        this.y=p.y-PH; this.vy=0; this.onG=true; this.jc=0;
+
+    function fmtDate(iso) {
+      const d = new Date(iso + 'T00:00');
+      if (isNaN(d)) return iso;
+      const w = ['日','月','火','水','木','金','土'][d.getDay()];
+      return `${d.getMonth() + 1}/${d.getDate()}(${w})`;
+    }
+
+    function render() {
+      // stats
+      const now = new Date();
+      const ym = now.toISOString().slice(0, 7);
+      const monthEntries = entries.filter(e => (e.date || '').slice(0, 7) === ym);
+      const alc = monthEntries.reduce((s, e) => s + pureAlcoholGrams(e.volume, e.abv), 0);
+      $('stTotal').textContent = entries.length;
+      $('stMonth').textContent = monthEntries.length;
+      $('stAlcohol').innerHTML = Math.round(alc) + '<span style="font-size:.7rem">g</span>';
+
+      const list = $('list');
+      if (!entries.length) {
+        list.innerHTML = '<div class="empty">まだ記録がありません。<br>最初の一杯を記録しよう 🍻</div>';
+        return;
       }
+      const sorted = [...entries].sort((a, b) => {
+        const c = (a.date || '').localeCompare(b.date || '') || (a.id - b.id);
+        return sortNewest ? -c : c;
+      });
+      list.innerHTML = sorted.map(e => {
+        const alcG = pureAlcoholGrams(e.volume, e.abv);
+        const tags = [];
+        if (e.volume) tags.push(`${e.volume}ml`);
+        if (e.abv) tags.push(`${e.abv}%`);
+        if (alcG) tags.push(`純アルコール ${alcG.toFixed(1)}g`);
+        return `<div class="entry">
+          <div class="emoji">${e.type || '🍾'}</div>
+          <div class="body">
+            <div class="top">
+              <span class="name">${esc(e.name)}</span>
+              <button class="del" data-id="${e.id}" title="削除">✕</button>
+            </div>
+            <div class="meta">${fmtDate(e.date)} ${e.rating ? '<span class="rating">' + stars(e.rating) + '</span>' : ''}</div>
+            ${tags.length ? '<div class="tags">' + tags.map(t => '<span class="tag">' + t + '</span>').join('') + '</div>' : ''}
+            ${e.note ? '<div class="note">' + esc(e.note) + '</div>' : ''}
+          </div>
+        </div>`;
+      }).join('');
     }
-    this.x = Math.max(4, Math.min(this.x, GW-4-PW));
-    if (this.inv>0) this.inv--;
-    this.bl++;
 
-    if (this.mv && this.onG) { if (++this.ft>7){ this.fr=(this.fr+1)%4; this.ft=0; } }
-    else if (!this.mv)        { this.fr=0; this.ft=0; }
-  },
-  draw() { drawChr(this.x-2, this.y-4, this.fr, this.onG, this.inv, this.bl); }
-};
-
-// ── Platforms ─────────────────────────────────────────
-let plats=[], nPx=0;
-function addPlat(){
-  const w=(5+Math.floor(Math.random()*5))*16;
-  const y=GY-80-Math.floor(Math.random()*3)*32;
-  plats.push({x:nPx+scrollX, y, w});
-  nPx+=w+110+Math.random()*160;
-}
-function initPlats(){ plats=[]; nPx=460; for(let i=0;i<6;i++) addPlat(); }
-function updPlats(){ plats=plats.filter(p=>p.x-scrollX>-400); while(nPx<GW+300) addPlat(); }
-function drwPlats(){
-  for (const p of plats){
-    const bx=Math.round(p.x-scrollX);
-    r(bx+4,p.y+12,p.w,6,C.shd);
-    r(bx,  p.y+4, p.w,12,C.plt);
-    r(bx,  p.y,   p.w,8, C.pltT);
-    ctx.fillStyle=C.shd;
-    for(let dx=0;dx<p.w;dx+=8) ctx.fillRect(bx+dx,p.y,4,2);
-  }
-}
-
-// ── Gems ──────────────────────────────────────────────
-let gems=[], gt=0;
-function initGems(){ gems=[]; gt=0; }
-function updGems(){
-  if(++gt > Math.max(38,78-lv*5)){
-    gt=0;
-    const p=plats[Math.floor(Math.random()*plats.length)];
-    gems.push(p
-      ?{x:p.x+p.w/2,  y:p.y-18,   a:Math.random()*Math.PI*2, done:false}
-      :{x:scrollX+GW+90+Math.random()*200, y:GY-20, a:0, done:false});
-  }
-  for (const g of gems){
-    g.a+=0.07;
-    const gx=g.x-scrollX, gy=g.y+Math.sin(g.a)*4;
-    if(!g.done && gx+12>pl.x && gx-12<pl.x+PW && gy+12>pl.y && gy-12<pl.y+PH){
-      g.done=true; score+=10*lv; spawnFx(gx,gy,C.gem,8,'g');
+    function esc(s) {
+      return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
-  }
-  gems=gems.filter(g=>!g.done && g.x-scrollX>-100);
-}
-function drwGems(){
-  for (const g of gems){
-    if(g.done) continue;
-    const gx=Math.round(g.x-scrollX), gy=Math.round(g.y+Math.sin(g.a)*4), s=10;
-    r(gx-s+2,gy+s+2,s*2,4,C.shd);
-    ctx.fillStyle=C.gem;
-    ctx.beginPath();ctx.moveTo(gx,gy-s);ctx.lineTo(gx+s,gy);ctx.lineTo(gx,gy+s);ctx.lineTo(gx-s,gy);ctx.closePath();ctx.fill();
-    ctx.fillStyle=C.gemS;
-    ctx.beginPath();ctx.moveTo(gx-2,gy-s+2);ctx.lineTo(gx+3,gy-2);ctx.lineTo(gx-2,gy+2);ctx.closePath();ctx.fill();
-    ctx.strokeStyle=C.chrD;ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(gx,gy-s);ctx.lineTo(gx+s,gy);ctx.lineTo(gx,gy+s);ctx.lineTo(gx-s,gy);ctx.closePath();ctx.stroke();
-  }
-}
 
-// ── Enemies ───────────────────────────────────────────
-let ens=[], et=0;
-function initEns(){ ens=[]; et=0; }
-function drwBug(ox,oy,an){
-  const lb=Math.round(Math.sin(an*4)*2);
-  r(ox+2,oy+28,28,4,C.shd);
-  r(ox+4,oy+8, 24,18,C.red);r(ox+4,oy+8,24,6,'#d05050');r(ox+4,oy+22,24,4,C.redD);
-  r(ox+8,oy,   16,12,C.red);
-  r(ox+10,oy+3,4,5,C.eye);r(ox+18,oy+3,4,5,C.eye);
-  r(ox+11,oy+4,2,2,C.wht);r(ox+19,oy+4,2,2,C.wht);
-  r(ox,   oy+12+lb,6,3,C.redD);r(ox+26,oy+12-lb,6,3,C.redD);
-  r(ox,   oy+18-lb,6,3,C.redD);r(ox+26,oy+18+lb,6,3,C.redD);
-}
-function drwSpk(ox,oy,an){
-  const b=Math.round(Math.sin(an*2)*3);
-  r(ox+2,oy+30,28,4,C.shd);
-  r(ox+6,oy+8+b,20,20,C.yel);r(ox+6,oy+8+b,20,6,'#e8b830');
-  ctx.fillStyle=C.redD;
-  for(let i=0;i<3;i++){const sx=ox+6+i*8;ctx.beginPath();ctx.moveTo(sx+4,oy+b);ctx.lineTo(sx,oy+10+b);ctx.lineTo(sx+8,oy+10+b);ctx.closePath();ctx.fill();}
-  r(ox+10,oy+14+b,4,5,C.eye);r(ox+18,oy+14+b,4,5,C.eye);
-  r(ox+9, oy+12+b,6,2,C.eye);r(ox+17,oy+12+b,6,2,C.eye);
-  r(ox+11,oy+22+b,10,3,C.redD);
-}
-function updEns(){
-  if(++et > Math.max(38,88-lv*8)){
-    et=0; const bug=Math.random()<0.6;
-    ens.push({bug, x:scrollX+GW+50, y:GY-(bug?28:30), w:32,h:28, s:2+lv*0.35+Math.random()*0.5, a:0, dead:false});
-  }
-  for(const e of ens){
-    e.x-=e.s; e.a+=0.1;
-    const ex=e.x-scrollX;
-    if(!e.dead && pl.inv===0 && ex+e.w-4>pl.x+4 && ex+4<pl.x+PW-4 && e.y+4<pl.y+PH && e.y+e.h>pl.y+6){
-      e.dead=true; pl.inv=90; lives--;
-      spawnFx(pl.x+PW/2, pl.y+PH/2, C.red, 12, 'g');
-      if(lives<=0){ gs='over'; best=Math.max(best,Math.floor(score)); }
-    }
-  }
-  ens=ens.filter(e=>!e.dead && e.x-scrollX>-100);
-}
-function drwEns(){
-  for(const e of ens){
-    const ox=Math.round(e.x-scrollX);
-    e.bug ? drwBug(ox,e.y,e.a) : drwSpk(ox,e.y,e.a);
-  }
-}
+    $('form').addEventListener('submit', e => {
+      e.preventDefault();
+      const entry = {
+        id: Date.now(),
+        name: $('name').value.trim(),
+        type: $('type').value,
+        date: $('date').value,
+        volume: parseFloat($('volume').value) || 0,
+        abv: parseFloat($('abv').value) || 0,
+        rating: parseInt($('rating').value) || 0,
+        note: $('note').value.trim()
+      };
+      if (!entry.name || !entry.date) return;
+      entries.push(entry);
+      save(entries);
+      render();
+      // reset (keep date)
+      const d = $('date').value;
+      e.target.reset();
+      $('date').value = d;
+      $('name').focus();
+    });
 
-// ── Particles ─────────────────────────────────────────
-let fxs=[];
-function spawnFx(x,y,col,n,t){
-  for(let i=0;i<n;i++){
-    const ang=(i/n)*Math.PI*2+Math.random()*0.4;
-    const s=t==='d'?1+Math.random()*2:2+Math.random()*4;
-    fxs.push({x,y,col,vx:Math.cos(ang)*s,vy:Math.sin(ang)*s-(t==='d'?0:2),life:25+Math.random()*20,max:45,sz:t==='d'?3:4});
-  }
-}
-function updFx(){ for(const p of fxs){p.x+=p.vx;p.y+=p.vy;p.vy+=0.2;p.life--;} fxs=fxs.filter(p=>p.life>0); }
-function drwFx(){
-  for(const p of fxs){const a=p.life/p.max,s=Math.round(p.sz*a);if(s>0){ctx.globalAlpha=a;ctx.fillStyle=p.col;ctx.fillRect(Math.round(p.x-s/2),Math.round(p.y-s/2),s,s);}}
-  ctx.globalAlpha=1;
-}
+    $('list').addEventListener('click', e => {
+      const btn = e.target.closest('.del');
+      if (!btn) return;
+      const id = Number(btn.dataset.id);
+      const item = entries.find(x => x.id === id);
+      if (confirm(`「${item ? item.name : 'この記録'}」を削除しますか？`)) {
+        entries = entries.filter(x => x.id !== id);
+        save(entries);
+        render();
+      }
+    });
 
-// ── Background ────────────────────────────────────────
-const cshp=[
-  {d:[0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1,1,1,0],c:5},
-  {d:[0,0,1,1,0,0,0,1,1,1,1,0,1,1,1,1,1,1,0,1,1,1,1,0],c:6},
-  {d:[0,1,1,0,1,1,1,1,1,1,1,1,0,1,1,0],c:4},
-];
-function drwCloud(x,y,sc,sh){
-  const sz=sc*8,cols=sh.c,rows=sh.d.length/cols;
-  for(let rv=0;rv<rows;rv++) for(let cv2=0;cv2<cols;cv2++)
-    if(sh.d[rv*cols+cv2]) ctx.fillRect(Math.round(x+cv2*sz),Math.round(y+rv*sz),sz,sz);
-}
-const clds=[{ox:80,y:50,sc:2,si:0},{ox:310,y:28,sc:2,si:1},{ox:550,y:58,sc:2,si:2},{ox:180,y:115,sc:1.5,si:0},{ox:420,y:95,sc:1.5,si:2}];
-function drwBg(){
-  r(0,0,GW,GH,C.sky);
-  ctx.fillStyle=C.cld;
-  for(const cl of clds){
-    const cx=((cl.ox-scrollX*0.2)%(GW+220)+GW+220)%(GW+220)-100;
-    drwCloud(cx,cl.y,cl.sc,cshp[cl.si]);
-  }
-  r(0,GY,GW,GH-GY,C.gnd); r(0,GY,GW,6,C.gndT);
-  ctx.fillStyle=C.shd;
-  for(let gx=(-(scrollX*0.5)%16+16)%16;gx<GW;gx+=16) ctx.fillRect(Math.round(gx),GY+8,8,4);
-}
+    $('sortBtn').addEventListener('click', () => {
+      sortNewest = !sortNewest;
+      $('sortBtn').textContent = (sortNewest ? '新しい順' : '古い順') + ' ▾';
+      render();
+    });
 
-// ── HUD on canvas ─────────────────────────────────────
-function drwHUD(){
-  r(0,0,GW,32,C.hud);
-  ctx.strokeStyle=C.txt;ctx.lineWidth=2;
-  ctx.beginPath();ctx.moveTo(0,32);ctx.lineTo(GW,32);ctx.stroke();
-  const items=[`SCORE ${Math.floor(score)}`,`BEST ${Math.floor(best)}`,
-               `${'♥'.repeat(Math.max(0,lives))}${'♡'.repeat(Math.max(0,3-lives))}`,`LV ${lv}`];
-  const sp=GW/4;
-  ctx.font='bold 13px Courier New';ctx.textBaseline='middle';
-  items.forEach((t,i)=>{
-    ctx.textAlign='center';
-    ctx.fillStyle=C.shd;ctx.fillText(t,sp*(i+0.5)+1,17);
-    ctx.fillStyle=C.txt;ctx.fillText(t,sp*(i+0.5),16);
-  });
-}
+    $('exportBtn').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `drink-log-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
 
-// ── Overlays ──────────────────────────────────────────
-function box(x,y,w,h){ r(x+4,y+4,w,h,C.shd);r(x,y,w,h,C.wht);ctx.strokeStyle=C.txt;ctx.lineWidth=3;ctx.strokeRect(x,y,w,h); }
-function bigT(t,x,y,sz,col){ ctx.font=`bold ${sz}px Courier New`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=C.shd;ctx.fillText(t,x+2,y+2);ctx.fillStyle=col;ctx.fillText(t,x,y); }
-function smT(t,x,y){ ctx.font='14px Courier New';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=C.txtL;ctx.fillText(t,x,y); }
+    $('importBtn').addEventListener('click', () => $('importFile').click());
+    $('importFile').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          if (!Array.isArray(data)) throw new Error();
+          if (confirm(`${data.length}件を読み込みます。現在の記録に追加しますか？（キャンセルで置き換え）`)) {
+            entries = entries.concat(data);
+          } else {
+            entries = data;
+          }
+          // ensure unique ids
+          entries = entries.map((x, i) => ({ ...x, id: x.id || Date.now() + i }));
+          save(entries);
+          render();
+        } catch {
+          alert('読み込みに失敗しました。JSONファイルを確認してください。');
+        }
+        e.target.value = '';
+      };
+      reader.readAsText(file);
+    });
 
-// ── Restart ───────────────────────────────────────────
-function restart(){
-  score=0;lives=3;lv=1;scrollX=0;spd=2.2;
-  pl.reset();initPlats();initGems();initEns();fxs=[];
-  gs='play';
-}
-let lvT=150;
-function chkLv(){
-  if(score>=lvT){ lv++;lvT=lv*200;spd+=0.25; spawnFx(pl.x+PW/2,pl.y,C.gem,16,'g'); }
-}
-
-// ── Main loop ─────────────────────────────────────────
-function update(){
-  fc++;
-  if(gs!=='play') return;
-  scrollX+=spd; score+=0.04*lv; best=Math.max(best,score);
-  pl.update(); updPlats(); updGems(); updEns(); updFx(); chkLv();
-}
-
-function draw(){
-  ctx.clearRect(0,0,GW,GH);
-  drwBg();drwPlats();drwGems();drwEns();pl.draw();drwFx();drwHUD();
-
-  const cx=GW/2, pulse=Math.floor(fc/20)%2===0;
-
-  if(gs==='pause'){
-    ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(0,0,GW,GH);
-    box(225,150,190,80);bigT('PAUSED',cx,185,20,C.txt);
-    smT('P キーで再開',cx,213);
-  }
-  if(gs==='over'){
-    ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(0,0,GW,GH);
-    box(155,118,330,176);
-    bigT('GAME OVER',cx,160,26,C.red);
-    smT(`SCORE: ${Math.floor(score)}`,cx,200);
-    smT(`BEST:  ${Math.floor(best)}`,cx,222);
-    ctx.fillStyle=pulse?C.txt:C.txtL;
-    ctx.font='bold 15px Courier New';ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText(touchOn?'画面をタップしてリスタート':'R キーでリスタート',cx,264);
-  }
-}
-
-function loop(){ update(); draw(); requestAnimationFrame(loop); }
-
-// ── Boot ──────────────────────────────────────────────
-initPlats();initGems();initEns();
-requestAnimationFrame(loop);
-</script>
+    render();
+  </script>
 </body>
 </html>
