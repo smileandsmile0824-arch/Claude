@@ -114,6 +114,39 @@
 
     .tools { display: flex; gap: 10px; padding: 20px 14px 0; }
     .tools button { flex: 1; background: none; border: 1px solid var(--line); color: var(--sub); border-radius: 10px; padding: 10px; font-size: .8rem; cursor: pointer; font-family: inherit; }
+
+    /* おすすめ未取得パネル */
+    #suggestPanel { background: var(--card); border-radius: 16px; margin: 0 14px 14px; padding: 4px 6px; box-shadow: var(--shadow); }
+    #suggestPanel summary { cursor: pointer; padding: 12px; font-size: .9rem; font-weight: 600; list-style: none; }
+    #suggestPanel summary::-webkit-details-marker { display: none; }
+    #suggestPanel summary::after { content: "▾"; float: right; color: var(--sub); }
+    #suggestPanel[open] summary::after { content: "▴"; }
+    .sgroup { padding: 2px 12px 8px; }
+    .sgroup h4 { font-size: .72rem; color: var(--sub); margin-bottom: 7px; font-weight: 600; }
+    .schips { display: flex; flex-wrap: wrap; gap: 7px; }
+    .schip {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--bg); border: 1px dashed var(--accent); color: var(--ink);
+      border-radius: 20px; padding: 6px 11px; font-size: .8rem; cursor: pointer; font-family: inherit;
+    }
+    .schip:active { background: var(--accent-soft); }
+    .schip .plus { color: var(--accent); font-weight: 800; }
+    .sdone { color: var(--ok); font-size: .84rem; padding: 8px 12px 12px; font-weight: 600; }
+
+    /* 祝福 */
+    .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 9998; }
+    .toast {
+      position: fixed; left: 50%; top: 36%; transform: translate(-50%, -50%) scale(.5);
+      background: var(--card); color: var(--ink); border: 2px solid var(--gold);
+      padding: 22px 28px; border-radius: 18px; box-shadow: 0 10px 40px rgba(0,0,0,.35);
+      font-weight: 800; font-size: 1.15rem; text-align: center; line-height: 1.4;
+      z-index: 9999; opacity: 0; transition: opacity .35s ease, transform .35s cubic-bezier(.2,1.4,.4,1);
+      max-width: 84vw;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    .toast small { display: block; font-size: .8rem; color: var(--sub); font-weight: 600; margin-top: 6px; }
+    @keyframes ringPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
+    .ring.pulse { animation: ringPulse .5s ease 2; }
   </style>
 </head>
 <body>
@@ -174,6 +207,11 @@
     <div class="msg" id="addMsg"></div>
   </form>
 
+  <details id="suggestPanel">
+    <summary>💡 おすすめ未取得（<span id="suggestCount">0</span>種・タップで追加）</summary>
+    <div id="suggestList"></div>
+  </details>
+
   <div class="toolbar">
     <h2>コレクション</h2>
     <input id="search" placeholder="🔍 名前で検索・重複確認">
@@ -211,6 +249,28 @@
         out.push({ id: 'seed-' + (i++), name, emoji, category: cat, note: '', date: '', seed: true })));
       return out;
     }
+
+    // おすすめ未取得の候補プール（[名前, 絵文字, カテゴリ]）— 100種到達を後押し
+    const SUGGESTIONS = [
+      ['黒ビール','🍺','ビール・泡・ワイン'],['クラフトビール','🍺','ビール・泡・ワイン'],['IPA','🍺','ビール・泡・ワイン'],
+      ['ヱビスビール','🍺','ビール・泡・ワイン'],['ロゼワイン','🍷','ビール・泡・ワイン'],['白ワイン','🍷','ビール・泡・ワイン'],
+      ['グラスワイン','🍷','ビール・泡・ワイン'],['シードル','🍾','ビール・泡・ワイン'],['スパークリング日本酒','🥂','ビール・泡・ワイン'],['ミモザ','🥂','ビール・泡・ワイン'],
+      ['角ハイボール','🥃','ハイボール系'],['トリスハイボール','🥃','ハイボール系'],['ジムビームハイボール','🥃','ハイボール系'],
+      ['山崎ハイボール','🥃','ハイボール系'],['響ハイボール','🥃','ハイボール系'],['メガハイボール','🥃','ハイボール系'],
+      ['レモンハイボール','🥃','ハイボール系'],['ジャックハイボール','🥃','ハイボール系'],
+      ['巨峰サワー','🍹','サワー・チューハイ'],['カルピスサワー','🍹','サワー・チューハイ'],['グレープフルーツサワー','🍹','サワー・チューハイ'],
+      ['白桃サワー','🍹','サワー・チューハイ'],['ゆずサワー','🍹','サワー・チューハイ'],['キウイサワー','🍹','サワー・チューハイ'],
+      ['メロンサワー','🍹','サワー・チューハイ'],['青りんごサワー','🍹','サワー・チューハイ'],['カシスサワー','🍹','サワー・チューハイ'],
+      ['シークワーサーサワー','🍹','サワー・チューハイ'],['塩レモンサワー','🍹','サワー・チューハイ'],['生レモンサワー','🍹','サワー・チューハイ'],
+      ['冷凍みかんサワー','🍹','サワー・チューハイ'],['ライムサワー','🍹','サワー・チューハイ'],
+      ['ジャスミンハイ','🍵','お茶割り・その他'],['黒烏龍ハイ','🍵','お茶割り・その他'],['そば茶ハイ','🍵','お茶割り・その他'],['玄米茶ハイ','🍵','お茶割り・その他'],
+      ['熱燗','🍶','日本酒・焼酎・スピリッツ'],['冷酒','🍶','日本酒・焼酎・スピリッツ'],['芋焼酎','🧊','日本酒・焼酎・スピリッツ'],
+      ['米焼酎','🧊','日本酒・焼酎・スピリッツ'],['泡盛','🧊','日本酒・焼酎・スピリッツ'],['黒糖焼酎','🧊','日本酒・焼酎・スピリッツ'],
+      ['梅酒','🍶','日本酒・焼酎・スピリッツ'],['梅酒ソーダ','🍶','日本酒・焼酎・スピリッツ'],['ジンソーダ','🍸','日本酒・焼酎・スピリッツ'],['ウォッカソーダ','🍸','日本酒・焼酎・スピリッツ'],
+      ['カシスオレンジ','🍸','その他'],['カシスソーダ','🍸','その他'],['モスコミュール','🍸','その他'],['ジントニック','🍸','その他'],
+      ['スクリュードライバー','🍸','その他'],['ファジーネーブル','🍸','その他'],['カルーアミルク','🍸','その他'],['レゲエパンチ','🍸','その他'],
+      ['ソルティドッグ','🍸','その他'],['ジンバック','🍸','その他'],['テキーラ','🥃','その他'],['ホッピー','🍺','その他'],
+    ];
 
     const load = () => { try { const d = JSON.parse(localStorage.getItem(KEY)); return Array.isArray(d) ? d : null; } catch { return null; } };
     const save = () => localStorage.setItem(KEY, JSON.stringify(entries));
@@ -281,7 +341,105 @@
       $('list').innerHTML = html;
     }
 
-    function render() { renderProgress(); renderList(); }
+    function renderSuggestions() {
+      const notYet = SUGGESTIONS.filter(([n]) => !findExact(n));
+      $('suggestCount').textContent = notYet.length;
+      if (!notYet.length) {
+        $('suggestList').innerHTML = '<div class="sdone">🏆 おすすめは全部コンプ！自分だけの一杯を追加していこう</div>';
+        return;
+      }
+      const groups = {};
+      notYet.forEach(([n, e, c]) => (groups[c] || (groups[c] = [])).push([n, e]));
+      const cats = CAT_ORDER.filter(c => groups[c]);
+      $('suggestList').innerHTML = cats.map(c => `
+        <div class="sgroup">
+          <h4>${CAT_EMOJI[c] || '🍾'} ${esc(c)}</h4>
+          <div class="schips">
+            ${groups[c].map(([n, e]) => `<button type="button" class="schip" data-name="${esc(n)}" data-emoji="${e}" data-cat="${esc(c)}"><span class="plus">＋</span>${e} ${esc(n)}</button>`).join('')}
+          </div>
+        </div>`).join('');
+    }
+
+    function render() { renderProgress(); renderList(); renderSuggestions(); }
+
+    // 追加処理（フォーム・おすすめ共通）+ 達成チェック
+    function pushDrink({ name, emoji, category, note }) {
+      const before = entries.length;
+      entries.push({
+        id: 'c-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name, emoji, category, note: note || '',
+        date: new Date().toISOString().slice(0, 10), seed: false
+      });
+      save();
+      const after = entries.length;
+      render();
+      checkMilestones(before, after);
+      return after;
+    }
+
+    function checkMilestones(before, after) {
+      [25, 50, 75, GOAL].forEach(t => {
+        if (before < t && after >= t) {
+          if (t >= GOAL) {
+            celebrate(true);
+            showToast('🎉 100種コンプリート達成！', 'おめでとう！全制覇です 🏆');
+          } else {
+            celebrate(false);
+            showToast(`🎊 ${t}種 到達！`, `残り ${GOAL - after} 種`);
+          }
+        }
+      });
+    }
+
+    function showToast(main, sub) {
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.innerHTML = esc(main) + (sub ? `<small>${esc(sub)}</small>` : '');
+      document.body.appendChild(t);
+      requestAnimationFrame(() => t.classList.add('show'));
+      setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 2600);
+      const ring = $('ring');
+      ring.classList.remove('pulse'); void ring.offsetWidth; ring.classList.add('pulse');
+    }
+
+    function celebrate(big) {
+      const cvs = document.createElement('canvas');
+      cvs.className = 'confetti';
+      document.body.appendChild(cvs);
+      const ctx = cvs.getContext('2d');
+      const resize = () => { cvs.width = innerWidth; cvs.height = innerHeight; };
+      resize();
+      const colors = ['#a8542b', '#d4a017', '#2e7d5b', '#c0392b', '#e08a4f', '#5fc79a', '#d46a92', '#4a7fb5'];
+      const N = big ? 200 : 70;
+      const parts = [];
+      for (let i = 0; i < N; i++) {
+        parts.push({
+          x: Math.random() * cvs.width,
+          y: -20 - Math.random() * cvs.height * 0.6,
+          w: 6 + Math.random() * 8, h: 9 + Math.random() * 10,
+          c: colors[i % colors.length],
+          vy: 2 + Math.random() * 3.5, vx: -1.4 + Math.random() * 2.8,
+          rot: Math.random() * 6.28, vr: -0.25 + Math.random() * 0.5
+        });
+      }
+      const dur = big ? 4500 : 2000;
+      const start = performance.now();
+      (function frame(now) {
+        const el = now - start;
+        ctx.clearRect(0, 0, cvs.width, cvs.height);
+        parts.forEach(p => {
+          p.x += p.vx; p.y += p.vy; p.vy += 0.035; p.rot += p.vr;
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+          ctx.globalAlpha = Math.max(0, 1 - el / dur);
+          ctx.fillStyle = p.c;
+          ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+          ctx.restore();
+        });
+        if (el < dur) requestAnimationFrame(frame);
+        else { cvs.remove(); removeEventListener('resize', resize); }
+      })(start);
+      addEventListener('resize', resize);
+    }
 
     // カテゴリ変更でアイコン初期化
     $('category').addEventListener('change', () => { $('emoji').value = CAT_EMOJI[$('category').value] || '🍾'; });
@@ -302,20 +460,19 @@
         const ok = confirm(`似た名前が${sim.length}件あります：\n${sim.map(s => '・' + s.name).join('\n')}\n\n別の種類として追加しますか？`);
         if (!ok) { setMsg('追加をキャンセルしました', 'warn'); return; }
       }
-      entries.push({
-        id: 'c-' + Date.now(),
-        name,
-        emoji: $('emoji').value,
-        category: $('category').value,
-        note: $('note').value.trim(),
-        date: new Date().toISOString().slice(0, 10),
-        seed: false
-      });
-      save();
-      render();
-      setMsg(`✅ 追加しました（${entries.length}/${GOAL}種）` + (entries.length >= GOAL ? ' 🎉コンプリート！' : ''), 'ok');
+      const n = pushDrink({ name, emoji: $('emoji').value, category: $('category').value, note: $('note').value.trim() });
+      setMsg(`✅ 追加しました（${n}/${GOAL}種）` + (n >= GOAL ? ' 🎉コンプリート！' : ''), 'ok');
       $('name').value = ''; $('note').value = '';
       $('name').focus();
+    });
+
+    // おすすめ未取得をタップで追加
+    $('suggestList').addEventListener('click', e => {
+      const chip = e.target.closest('.schip');
+      if (!chip) return;
+      if (findExact(chip.dataset.name)) { renderSuggestions(); return; }
+      const n = pushDrink({ name: chip.dataset.name, emoji: chip.dataset.emoji, category: chip.dataset.cat, note: '' });
+      setMsg(`✅ 「${chip.dataset.name}」を追加（${n}/${GOAL}種）` + (n >= GOAL ? ' 🎉コンプリート！' : ''), 'ok');
     });
 
     // 入力中に重複を即時ヒント
