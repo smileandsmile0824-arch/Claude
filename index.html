@@ -147,6 +147,25 @@
     .toast small { display: block; font-size: .8rem; color: var(--sub); font-weight: 600; margin-top: 6px; }
     @keyframes ringPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
     .ring.pulse { animation: ringPulse .5s ease 2; }
+
+    /* 共有 */
+    .sharebar { display: flex; align-items: center; gap: 10px; margin: 0 14px 12px; padding: 10px 14px; background: var(--card); border-radius: 12px; box-shadow: var(--shadow); }
+    .sharebar .stt { flex: 1; font-size: .8rem; color: var(--sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sharebar .stt.on { color: var(--ok); font-weight: 700; }
+    .sharebar .stt.err { color: var(--danger); font-weight: 600; }
+    .sharebar #shareBtn { background: none; border: 1px solid var(--line); color: var(--accent); border-radius: 8px; padding: 7px 12px; font-size: .78rem; cursor: pointer; font-family: inherit; flex-shrink: 0; }
+    #sharePanel { background: var(--card); border-radius: 16px; margin: -4px 14px 14px; box-shadow: var(--shadow); }
+    #sharePanel[open] { padding: 4px 4px 14px; }
+    .sharebody { padding: 12px 14px 0; }
+    .shelp { font-size: .76rem; color: var(--sub); margin-bottom: 12px; line-height: 1.6; }
+    #sharePanel textarea { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13px; font-family: ui-monospace, monospace; resize: vertical; }
+    #sharePanel .btn.ghost { background: none; color: var(--sub); border: 1px solid var(--line); }
+    .setup { margin-top: 14px; }
+    .setup summary { cursor: pointer; font-size: .8rem; color: var(--accent); }
+    .setup ol { margin: 10px 0 6px 18px; font-size: .78rem; color: var(--ink); line-height: 1.8; }
+    .setup a { color: var(--accent); }
+    .setup code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: .74rem; }
+    .by { font-size: .62rem; color: var(--sub); margin-left: 3px; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -154,6 +173,48 @@
     <h1>🎯 お酒100種コンプリート</h1>
     <p>飲んだお酒の種類を集めて100種を目指そう</p>
   </header>
+
+  <div class="sharebar">
+    <span id="shareStatus" class="stt">📴 ローカル保存（未共有）</span>
+    <button id="shareBtn">共有設定</button>
+  </div>
+  <details id="sharePanel">
+    <summary style="display:none"></summary>
+    <div class="sharebody">
+      <p class="shelp">複数人・複数端末で同じリストを<b>リアルタイム共同編集</b>できます。無料のFirebaseプロジェクトを1つ用意し、下に設定を貼り付けて<b>共有コード</b>を決めるだけ。同じコードを開いた全員で共有されます。</p>
+      <div class="row">
+        <div class="field">
+          <label for="shareNick">ニックネーム（誰が追加したか記録）</label>
+          <input id="shareNick" placeholder="例: たろう">
+        </div>
+        <div class="field">
+          <label for="shareCode">共有コード（合言葉・推測されにくい語を）</label>
+          <input id="shareCode" placeholder="例: nomikai-2026-x7k">
+        </div>
+      </div>
+      <label for="shareConfig">Firebase 設定（firebaseConfig を丸ごと貼り付け）</label>
+      <textarea id="shareConfig" rows="6" placeholder='{
+  "apiKey": "...",
+  "authDomain": "xxx.firebaseapp.com",
+  "databaseURL": "https://xxx-default-rtdb.firebaseio.com",
+  "projectId": "xxx"
+}'></textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="shareConnect" class="btn">☁ 接続して共有</button>
+        <button id="shareDisconnect" class="btn ghost">切断（ローカルに戻す）</button>
+      </div>
+      <details class="setup"><summary>▸ セットアップ手順（初回のみ・約5分）</summary>
+        <ol>
+          <li><a href="https://console.firebase.google.com/" target="_blank" rel="noopener">Firebaseコンソール</a>で「プロジェクトを追加」</li>
+          <li>左メニュー「構築 → Realtime Database」→「データベースを作成」→ ロケーション選択 →「テストモードで開始」</li>
+          <li>「プロジェクトの概要」の歯車 → プロジェクト設定 → 「マイアプリ」で <b>&lt;/&gt; ウェブ</b> を追加 → 表示される <code>firebaseConfig</code> の { } 内を上の欄に貼り付け</li>
+          <li>ニックネームと共有コード（合言葉）を入力 →「接続して共有」</li>
+          <li>一緒に管理したい人に、この同じページURL・設定・共有コードを共有</li>
+        </ol>
+        <p class="shelp">※テストモードは初期状態だと誰でも読み書き可。合言葉としての共有コードで軽く保護されますが、本格運用時はRealtime Databaseの「ルール」で制限してください。</p>
+      </details>
+    </div>
+  </details>
 
   <div class="progress">
     <div class="ring" id="ring">
@@ -225,8 +286,11 @@
     <input id="importFile" type="file" accept="application/json,.json" style="display:none">
   </div>
 
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
   <script>
     const KEY = 'drinkCollection.v1';
+    const CFG_KEY = 'drinkShare.v1';
     const GOAL = 100;
     const $ = id => document.getElementById(id);
 
@@ -276,6 +340,84 @@
     const save = () => localStorage.setItem(KEY, JSON.stringify(entries));
     let entries = load() || seedList();
     if (!localStorage.getItem(KEY)) save();
+
+    // ===== クラウド共同編集（Firebase Realtime Database）=====
+    const cloud = { on: false, db: null, ref: null, code: '', nick: '', primed: false };
+    let fbInited = false;
+
+    function clean(e) { return { name: e.name, emoji: e.emoji, category: e.category, note: e.note || '', date: e.date || '', seed: !!e.seed, by: e.by || '' }; }
+    const loadCfg = () => { try { return JSON.parse(localStorage.getItem(CFG_KEY)); } catch { return null; } };
+    const saveCfg = (config, code, nick) => localStorage.setItem(CFG_KEY, JSON.stringify({ config, code, nick }));
+    const clearCfg = () => localStorage.removeItem(CFG_KEY);
+
+    // すべての更新はここを通す（ローカル＝即反映、クラウド＝Firebaseへ書込→リスナで反映）
+    function applyEntries(arr, opts = {}) {
+      const before = entries.length;
+      entries = arr.slice();
+      save();
+      render();
+      if (opts.celebrate !== false && entries.length > before) checkMilestones(before, entries.length);
+    }
+    function commitAdd(obj) {
+      if (cloud.on) cloud.ref.child('drinks/' + obj.id).set(clean(obj));
+      else applyEntries(entries.concat(obj));
+    }
+    function commitRemove(id) {
+      if (cloud.on) cloud.ref.child('drinks/' + id).remove();
+      else applyEntries(entries.filter(e => e.id !== id), { celebrate: false });
+    }
+    function commitReplace(arr) {
+      if (cloud.on) { const o = {}; arr.forEach(e => o[e.id] = clean(e)); cloud.ref.child('drinks').set(o); }
+      else applyEntries(arr, { celebrate: false });
+    }
+
+    function setStatus(state, extra) {
+      const el = $('shareStatus');
+      el.className = 'stt';
+      if (state === 'cloud') { el.textContent = '☁ 共有中：' + cloud.code + (cloud.nick ? '（' + cloud.nick + '）' : ''); el.classList.add('on'); }
+      else if (state === 'connecting') { el.textContent = '… 接続中'; }
+      else if (state === 'error') { el.textContent = '⚠ ' + (extra || '接続エラー'); el.classList.add('err'); }
+      else { el.textContent = '📴 ローカル保存（未共有）'; }
+    }
+
+    function connect(config, code, nick) {
+      if (typeof firebase === 'undefined') { setStatus('error', 'Firebase読込失敗（ネット/拡張機能を確認）'); return; }
+      if (!config || !config.databaseURL) { setStatus('error', 'config に databaseURL がありません'); return; }
+      if (!code) { setStatus('error', '共有コードを入力してください'); return; }
+      try {
+        if (!fbInited) { firebase.initializeApp(config); fbInited = true; }
+        cloud.db = firebase.database();
+        cloud.code = code; cloud.nick = nick || '';
+        cloud.ref = cloud.db.ref('rooms/' + code);
+        cloud.primed = false;
+        setStatus('connecting');
+        cloud.ref.child('drinks').once('value').then(snap => {
+          if (!snap.exists() && entries.length) {
+            if (confirm('この共有コードは空です。今の' + entries.length + '件をアップロードして共有を開始しますか？')) {
+              const o = {}; entries.forEach(e => o[e.id] = clean(e));
+              cloud.ref.child('drinks').set(o);
+            }
+          }
+          cloud.on = true;
+          cloud.ref.child('drinks').on('value', onCloudValue, err => setStatus('error', err.message));
+          saveCfg(config, code, nick);
+          setStatus('cloud');
+        }).catch(err => setStatus('error', err.message));
+      } catch (err) { setStatus('error', err.message); }
+    }
+    function onCloudValue(snap) {
+      const val = snap.val() || {};
+      const arr = Object.keys(val).map(id => ({ id, ...val[id] }));
+      const celebrate = cloud.primed;   // 初回同期では祝福しない
+      cloud.primed = true;
+      applyEntries(arr, { celebrate });
+    }
+    function disconnect() {
+      if (cloud.ref) cloud.ref.child('drinks').off();
+      cloud.on = false; cloud.ref = null;
+      setStatus('local');
+      render();
+    }
 
     // 名前の正規化（重複判定用）
     function norm(s) {
@@ -331,8 +473,8 @@
         shown += items.length;
         html += `<div class="cat"><h3><span>${CAT_EMOJI[cat] || '🍾'} ${esc(cat)}</span><span class="cnt">${items.length}</span></h3><div class="chips">`;
         items.forEach(e => {
-          html += `<span class="chip ${e.seed ? 'seed' : 'custom'}" title="${esc(e.note)}">
-            <span>${e.emoji || '🍾'}</span><span class="nm">${esc(e.name)}</span>
+          html += `<span class="chip ${e.seed ? 'seed' : 'custom'}" title="${esc(e.note)}${e.by ? ' ・by ' + esc(e.by) : ''}">
+            <span>${e.emoji || '🍾'}</span><span class="nm">${esc(e.name)}</span>${e.by ? `<span class="by">${esc(e.by)}</span>` : ''}
             <button class="x" data-id="${esc(e.id)}" title="削除">✕</button></span>`;
         });
         html += '</div></div>';
@@ -362,19 +504,16 @@
 
     function render() { renderProgress(); renderList(); renderSuggestions(); }
 
-    // 追加処理（フォーム・おすすめ共通）+ 達成チェック
+    // 追加処理（フォーム・おすすめ共通）。ローカル＝件数を返す / クラウド＝null（件数はリスナ反映）
     function pushDrink({ name, emoji, category, note }) {
-      const before = entries.length;
-      entries.push({
+      const obj = {
         id: 'c-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         name, emoji, category, note: note || '',
-        date: new Date().toISOString().slice(0, 10), seed: false
-      });
-      save();
-      const after = entries.length;
-      render();
-      checkMilestones(before, after);
-      return after;
+        date: new Date().toISOString().slice(0, 10), seed: false,
+        by: cloud.on ? cloud.nick : ''
+      };
+      commitAdd(obj);
+      return cloud.on ? null : entries.length;
     }
 
     function checkMilestones(before, after) {
@@ -461,7 +600,7 @@
         if (!ok) { setMsg('追加をキャンセルしました', 'warn'); return; }
       }
       const n = pushDrink({ name, emoji: $('emoji').value, category: $('category').value, note: $('note').value.trim() });
-      setMsg(`✅ 追加しました（${n}/${GOAL}種）` + (n >= GOAL ? ' 🎉コンプリート！' : ''), 'ok');
+      setMsg(n === null ? '☁ 共有リストに追加しました' : `✅ 追加しました（${n}/${GOAL}種）` + (n >= GOAL ? ' 🎉コンプリート！' : ''), 'ok');
       $('name').value = ''; $('note').value = '';
       $('name').focus();
     });
@@ -472,7 +611,7 @@
       if (!chip) return;
       if (findExact(chip.dataset.name)) { renderSuggestions(); return; }
       const n = pushDrink({ name: chip.dataset.name, emoji: chip.dataset.emoji, category: chip.dataset.cat, note: '' });
-      setMsg(`✅ 「${chip.dataset.name}」を追加（${n}/${GOAL}種）` + (n >= GOAL ? ' 🎉コンプリート！' : ''), 'ok');
+      setMsg(n === null ? `☁ 「${chip.dataset.name}」を共有リストに追加` : `✅ 「${chip.dataset.name}」を追加（${n}/${GOAL}種）` + (n >= GOAL ? ' 🎉コンプリート！' : ''), 'ok');
     });
 
     // 入力中に重複を即時ヒント
@@ -492,10 +631,8 @@
       const btn = e.target.closest('.x');
       if (!btn) return;
       const item = entries.find(x => x.id === btn.dataset.id);
-      if (item && confirm(`「${item.name}」を削除しますか？`)) {
-        entries = entries.filter(x => x.id !== btn.dataset.id);
-        save();
-        render();
+      if (item && confirm(`「${item.name}」を削除しますか？` + (cloud.on ? '\n（共有中：全員のリストから削除されます）' : ''))) {
+        commitRemove(btn.dataset.id);
       }
     });
 
@@ -520,25 +657,49 @@
           if (!Array.isArray(data)) throw new Error();
           let added = 0, skipped = 0;
           const merge = confirm(`${data.length}件を読み込みます。\nOK＝現在のリストに統合（重複除外）\nキャンセル＝完全に置き換え`);
-          if (!merge) { entries = data; }
+          let next;
+          if (!merge) { next = data.map((d, i) => ({ ...d, id: d.id || 'c-' + (Date.now() + i) })); }
           else {
+            next = entries.slice();
             data.forEach(d => {
-              if (d && d.name && !findExact(d.name)) { entries.push({ ...d, id: d.id || 'c-' + (Date.now() + added) }); added++; }
+              if (d && d.name && !next.some(e => norm(e.name) === norm(d.name))) { next.push({ ...d, id: d.id || 'c-' + (Date.now() + added) }); added++; }
               else skipped++;
             });
           }
-          save(); render();
-          setMsg(merge ? `統合完了：${added}件追加 / ${skipped}件は重複でスキップ` : `${data.length}件に置き換えました`, 'ok');
+          commitReplace(next);
+          setMsg((merge ? `統合完了：${added}件追加 / ${skipped}件は重複でスキップ` : `${data.length}件に置き換えました`) + (cloud.on ? '（共有に反映）' : ''), 'ok');
         } catch { setMsg('読み込み失敗。JSONファイルを確認してください', 'err'); }
         e.target.value = '';
       };
       reader.readAsText(file);
     });
     $('resetBtn').addEventListener('click', () => {
-      if (confirm('コレクションを初期の48種に戻します。追加した種類は削除されます。よろしいですか？')) {
-        entries = seedList(); save(); render(); setMsg('初期48種に戻しました', 'warn');
+      if (confirm('コレクションを初期の48種に戻します。追加した種類は削除されます。' + (cloud.on ? '\n（共有中：全員のリストが初期化されます）' : '') + '\nよろしいですか？')) {
+        commitReplace(seedList()); setMsg('初期48種に戻しました', 'warn');
       }
     });
+
+    // 共有UI
+    $('shareBtn').addEventListener('click', () => { const p = $('sharePanel'); p.open = !p.open; });
+    $('shareConnect').addEventListener('click', () => {
+      let config;
+      try { config = JSON.parse($('shareConfig').value.trim()); }
+      catch { setStatus('error', 'Firebase設定のJSONが不正です'); return; }
+      connect(config, $('shareCode').value.trim(), $('shareNick').value.trim());
+    });
+    $('shareDisconnect').addEventListener('click', () => {
+      disconnect(); clearCfg(); setMsg('共有を解除しローカルに戻しました', 'warn');
+    });
+
+    // 起動時：保存済み設定があれば自動接続
+    (function autoConnect() {
+      const cfg = loadCfg();
+      if (!cfg) return;
+      if (cfg.config) $('shareConfig').value = JSON.stringify(cfg.config, null, 2);
+      if (cfg.code) $('shareCode').value = cfg.code;
+      if (cfg.nick) $('shareNick').value = cfg.nick;
+      if (cfg.config && cfg.code) connect(cfg.config, cfg.code, cfg.nick);
+    })();
 
     render();
   </script>
