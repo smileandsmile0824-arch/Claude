@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#5b3a29">
-  <title>飲んだお酒リスト</title>
+  <title>お酒100種コンプリート</title>
   <style>
     :root {
       --bg: #f7f3ee;
@@ -14,7 +14,9 @@
       --line: #e7ded4;
       --accent: #a8542b;
       --accent-soft: #f3e3d8;
+      --gold: #d4a017;
       --danger: #c0392b;
+      --ok: #2e7d5b;
       --shadow: 0 2px 10px rgba(80,50,30,.08);
     }
     @media (prefers-color-scheme: dark) {
@@ -26,7 +28,9 @@
         --line: #3a322c;
         --accent: #e08a4f;
         --accent-soft: #3a2c22;
+        --gold: #e8c157;
         --danger: #e57368;
+        --ok: #5fc79a;
         --shadow: 0 2px 12px rgba(0,0,0,.3);
       }
     }
@@ -36,409 +40,318 @@
       color: var(--ink);
       font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
       line-height: 1.5;
-      padding: 0 0 40px;
+      padding: 0 0 44px;
       max-width: 640px;
       margin: 0 auto;
     }
-    header {
-      padding: 22px 18px 16px;
-      text-align: center;
-    }
-    header h1 { font-size: 1.35rem; letter-spacing: .04em; }
-    header p { color: var(--sub); font-size: .8rem; margin-top: 4px; }
+    header { padding: 20px 18px 10px; text-align: center; }
+    header h1 { font-size: 1.3rem; letter-spacing: .03em; }
+    header p { color: var(--sub); font-size: .78rem; margin-top: 3px; }
 
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      padding: 0 14px 16px;
+    /* progress */
+    .progress {
+      display: flex; align-items: center; gap: 18px;
+      background: var(--card); border-radius: 18px;
+      margin: 8px 14px 16px; padding: 18px; box-shadow: var(--shadow);
     }
-    .stat {
-      background: var(--card);
-      border-radius: 14px;
-      padding: 12px 8px;
-      text-align: center;
-      box-shadow: var(--shadow);
+    .ring {
+      width: 108px; height: 108px; border-radius: 50%;
+      display: grid; place-items: center; flex-shrink: 0;
+      background: conic-gradient(var(--accent) 0deg, var(--line) 0deg);
+      transition: background .5s ease;
     }
-    .stat .num { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
-    .stat .lbl { font-size: .68rem; color: var(--sub); margin-top: 2px; }
+    .ring-inner {
+      width: 84px; height: 84px; border-radius: 50%; background: var(--card);
+      display: grid; place-items: center; text-align: center;
+    }
+    .ring-num { font-size: 1.5rem; font-weight: 800; color: var(--accent); line-height: 1; }
+    .ring-den { font-size: .8rem; color: var(--sub); font-weight: 600; }
+    .ring-lbl { font-size: .62rem; color: var(--sub); margin-top: 3px; }
+    .pside { flex: 1; }
+    .pbar { height: 9px; background: var(--line); border-radius: 6px; overflow: hidden; margin: 6px 0 10px; }
+    .pbar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--gold)); border-radius: 6px; width: 0; transition: width .5s ease; }
+    .pside .big { font-size: 1.05rem; font-weight: 700; }
+    .pside .sub { font-size: .78rem; color: var(--sub); }
+    .pmsg { font-size: .82rem; color: var(--gold); font-weight: 700; margin-top: 8px; min-height: 1em; }
 
-    form {
-      background: var(--card);
-      border-radius: 16px;
-      margin: 0 14px 18px;
-      padding: 16px;
-      box-shadow: var(--shadow);
-    }
-    .row { display: flex; gap: 10px; margin-bottom: 12px; }
+    /* add form */
+    form { background: var(--card); border-radius: 16px; margin: 0 14px 14px; padding: 16px; box-shadow: var(--shadow); }
+    .row { display: flex; gap: 10px; margin-bottom: 10px; }
     .field { flex: 1; }
     label { display: block; font-size: .72rem; color: var(--sub); margin-bottom: 4px; }
-    input, select, textarea {
-      width: 100%;
-      background: var(--bg);
-      color: var(--ink);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 10px 12px;
-      font-size: 16px;
-      font-family: inherit;
+    input, select {
+      width: 100%; background: var(--bg); color: var(--ink);
+      border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 16px; font-family: inherit;
     }
-    textarea { resize: vertical; min-height: 44px; }
-    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
-    .btn {
-      width: 100%;
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 12px;
-      padding: 13px;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
-    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    .btn { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 12px; padding: 13px; font-size: 1rem; font-weight: 600; cursor: pointer; font-family: inherit; }
     .btn:active { opacity: .85; }
+    .msg { font-size: .82rem; margin-top: 10px; min-height: 1em; }
+    .msg.err { color: var(--danger); font-weight: 600; }
+    .msg.ok { color: var(--ok); font-weight: 600; }
+    .msg.warn { color: var(--gold); font-weight: 600; }
 
-    .list-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      padding: 0 20px 8px;
-    }
-    .list-head h2 { font-size: .95rem; }
-    .list-head .filter { font-size: .78rem; color: var(--accent); background: none; border: none; cursor: pointer; font-family: inherit; }
+    /* list */
+    .toolbar { display: flex; gap: 10px; align-items: center; padding: 8px 18px 4px; }
+    .toolbar h2 { font-size: .95rem; flex-shrink: 0; }
+    #search { flex: 1; padding: 8px 12px; font-size: 14px; }
 
-    .entry {
-      background: var(--card);
-      border-radius: 14px;
-      margin: 0 14px 10px;
-      padding: 13px 15px;
-      box-shadow: var(--shadow);
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
+    .cat { margin: 4px 14px 0; }
+    .cat h3 { font-size: .76rem; color: var(--sub); font-weight: 700; margin: 12px 4px 8px; display: flex; justify-content: space-between; }
+    .cat h3 .cnt { color: var(--accent); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--card); border: 1px solid var(--line); border-radius: 22px;
+      padding: 7px 8px 7px 12px; font-size: .84rem; box-shadow: var(--shadow); max-width: 100%;
     }
-    .entry .emoji { font-size: 1.6rem; line-height: 1; margin-top: 2px; }
-    .entry .body { flex: 1; min-width: 0; }
-    .entry .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-    .entry .name { font-weight: 600; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .entry .meta { color: var(--sub); font-size: .74rem; margin-top: 2px; }
-    .entry .tags { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
-    .tag { background: var(--accent-soft); color: var(--accent); font-size: .68rem; padding: 2px 8px; border-radius: 20px; }
-    .entry .note { color: var(--sub); font-size: .78rem; margin-top: 6px; word-break: break-word; }
-    .entry .del { background: none; border: none; color: var(--sub); font-size: 1.1rem; cursor: pointer; padding: 0 2px; line-height: 1; }
-    .entry .del:active { color: var(--danger); }
+    .chip.seed { }
+    .chip.custom { border-color: var(--accent); background: var(--accent-soft); }
+    .chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chip .x { border: none; background: none; color: var(--sub); font-size: 1rem; cursor: pointer; line-height: 1; padding: 0 2px; }
+    .chip .x:active { color: var(--danger); }
+    .empty { color: var(--sub); font-size: .85rem; padding: 10px 6px; }
 
-    .empty { text-align: center; color: var(--sub); padding: 40px 20px; font-size: .9rem; }
-    .rating { color: var(--accent); font-size: .8rem; }
-
-    #presetPanel {
-      background: var(--card);
-      border-radius: 16px;
-      margin: -6px 14px 18px;
-      padding: 4px 6px;
-      box-shadow: var(--shadow);
-    }
-    #presetPanel summary {
-      cursor: pointer;
-      padding: 12px 12px;
-      font-size: .9rem;
-      font-weight: 600;
-      list-style: none;
-    }
-    #presetPanel summary::-webkit-details-marker { display: none; }
-    #presetPanel summary::after { content: "▾"; float: right; color: var(--sub); }
-    #presetPanel[open] summary::after { content: "▴"; }
-    .pgroup { padding: 4px 12px 10px; }
-    .pgroup h3 { font-size: .74rem; color: var(--sub); margin-bottom: 7px; font-weight: 600; }
-    .pchips { display: flex; flex-wrap: wrap; gap: 7px; }
-    .pchip {
-      background: var(--bg);
-      border: 1px solid var(--line);
-      color: var(--ink);
-      border-radius: 20px;
-      padding: 6px 12px;
-      font-size: .8rem;
-      cursor: pointer;
-      font-family: inherit;
-    }
-    .pchip:active { background: var(--accent-soft); border-color: var(--accent); }
-
-    .tools { display: flex; gap: 10px; padding: 18px 14px 0; }
-    .tools button {
-      flex: 1; background: none; border: 1px solid var(--line); color: var(--sub);
-      border-radius: 10px; padding: 10px; font-size: .8rem; cursor: pointer; font-family: inherit;
-    }
+    .tools { display: flex; gap: 10px; padding: 20px 14px 0; }
+    .tools button { flex: 1; background: none; border: 1px solid var(--line); color: var(--sub); border-radius: 10px; padding: 10px; font-size: .8rem; cursor: pointer; font-family: inherit; }
   </style>
 </head>
 <body>
   <header>
-    <h1>🍶 飲んだお酒リスト</h1>
-    <p>飲んだお酒を記録して管理しよう</p>
+    <h1>🎯 お酒100種コンプリート</h1>
+    <p>飲んだお酒の種類を集めて100種を目指そう</p>
   </header>
 
-  <div class="stats">
-    <div class="stat"><div class="num" id="stTotal">0</div><div class="lbl">総記録数</div></div>
-    <div class="stat"><div class="num" id="stMonth">0</div><div class="lbl">今月</div></div>
-    <div class="stat"><div class="num" id="stAlcohol">0<span style="font-size:.7rem">g</span></div><div class="lbl">純アルコール今月</div></div>
+  <div class="progress">
+    <div class="ring" id="ring">
+      <div class="ring-inner">
+        <div class="ring-num"><span id="pCount">0</span><span class="ring-den">/100</span></div>
+        <div class="ring-lbl">コンプリート</div>
+      </div>
+    </div>
+    <div class="pside">
+      <div class="big"><span id="pPercent">0</span>% 達成</div>
+      <div class="pbar"><i id="pFill"></i></div>
+      <div class="sub">残り <b id="pRemain">100</b> 種</div>
+      <div class="pmsg" id="pMsg"></div>
+    </div>
   </div>
 
-  <form id="form">
+  <form id="form" autocomplete="off">
     <div class="row">
-      <div class="field" style="flex:1.3">
-        <label for="name">お酒の名前</label>
-        <input id="name" placeholder="例: 獺祭 純米大吟醸" list="presetList" required>
-        <datalist id="presetList"></datalist>
+      <div class="field" style="flex:1.4">
+        <label for="name">新しいお酒の名前</label>
+        <input id="name" placeholder="例: 巨峰サワー" required>
       </div>
       <div class="field">
-        <label for="type">種類</label>
-        <select id="type">
-          <option value="🍺">ビール 🍺</option>
-          <option value="🍶">日本酒 🍶</option>
-          <option value="🍷">ワイン 🍷</option>
-          <option value="🥃">ウイスキー 🥃</option>
-          <option value="🍸">カクテル 🍸</option>
-          <option value="🍹">サワー/酎ハイ 🍹</option>
-          <option value="🥂">スパークリング 🥂</option>
-          <option value="🧊">焼酎 🧊</option>
-          <option value="🍾">その他 🍾</option>
+        <label for="emoji">アイコン</label>
+        <select id="emoji">
+          <option value="🍺">🍺</option><option value="🍶">🍶</option><option value="🍷">🍷</option>
+          <option value="🥃">🥃</option><option value="🍸">🍸</option><option value="🍹">🍹</option>
+          <option value="🥂">🥂</option><option value="🧊">🧊</option><option value="🍵">🍵</option>
+          <option value="🍾">🍾</option>
         </select>
       </div>
     </div>
     <div class="row">
       <div class="field">
-        <label for="date">飲んだ日</label>
-        <input id="date" type="date" required>
-      </div>
-      <div class="field">
-        <label for="volume">量 (ml)</label>
-        <input id="volume" type="number" inputmode="decimal" min="0" step="1" placeholder="350">
-      </div>
-      <div class="field">
-        <label for="abv">度数 (%)</label>
-        <input id="abv" type="number" inputmode="decimal" min="0" max="100" step="0.1" placeholder="5">
-      </div>
-    </div>
-    <div class="row">
-      <div class="field">
-        <label for="rating">評価</label>
-        <select id="rating">
-          <option value="0">評価なし</option>
-          <option value="5">★★★★★</option>
-          <option value="4">★★★★</option>
-          <option value="3">★★★</option>
-          <option value="2">★★</option>
-          <option value="1">★</option>
+        <label for="category">カテゴリ</label>
+        <select id="category">
+          <option value="ビール・泡・ワイン">🍺 ビール・泡・ワイン</option>
+          <option value="ハイボール系">🥃 ハイボール系</option>
+          <option value="サワー・チューハイ">🍹 サワー・チューハイ</option>
+          <option value="お茶割り・その他">🍵 お茶割り・その他</option>
+          <option value="日本酒・焼酎・スピリッツ">🍶 日本酒・焼酎・スピリッツ</option>
+          <option value="その他">🍾 その他</option>
         </select>
       </div>
-      <div class="field" style="flex:2">
-        <label for="note">メモ (場所・感想など)</label>
-        <input id="note" placeholder="家飲み / すっきり辛口で美味しかった">
+      <div class="field" style="flex:1.4">
+        <label for="note">メモ（任意）</label>
+        <input id="note" placeholder="店名・感想など">
       </div>
     </div>
-    <button class="btn" type="submit">＋ 記録する</button>
+    <button class="btn" type="submit">＋ コレクションに追加</button>
+    <div class="msg" id="addMsg"></div>
   </form>
 
-  <details id="presetPanel">
-    <summary>🍶 プリセットから選ぶ（<span id="presetCount">0</span>種）</summary>
-    <div id="presetGroups"></div>
-  </details>
-
-  <div class="list-head">
-    <h2>記録一覧</h2>
-    <button class="filter" id="sortBtn">新しい順 ▾</button>
+  <div class="toolbar">
+    <h2>コレクション</h2>
+    <input id="search" placeholder="🔍 名前で検索・重複確認">
   </div>
   <div id="list"></div>
 
   <div class="tools">
-    <button id="exportBtn">エクスポート (JSON)</button>
+    <button id="exportBtn">エクスポート</button>
     <button id="importBtn">インポート</button>
+    <button id="resetBtn">初期48種に戻す</button>
     <input id="importFile" type="file" accept="application/json,.json" style="display:none">
   </div>
 
   <script>
-    const KEY = 'drinkLog.v1';
+    const KEY = 'drinkCollection.v1';
+    const GOAL = 100;
     const $ = id => document.getElementById(id);
-    let sortNewest = true;
 
-    const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
-    const save = data => localStorage.setItem(KEY, JSON.stringify(data));
-    let entries = load();
+    const CAT_ORDER = ['ビール・泡・ワイン','ハイボール系','サワー・チューハイ','お茶割り・その他','日本酒・焼酎・スピリッツ','その他'];
+    const CAT_EMOJI = { 'ビール・泡・ワイン':'🍺','ハイボール系':'🥃','サワー・チューハイ':'🍹','お茶割り・その他':'🍵','日本酒・焼酎・スピリッツ':'🍶','その他':'🍾' };
 
-    // default date = today
-    $('date').value = new Date().toISOString().slice(0, 10);
-
-    // お酒マスターリスト（整理済み・全48種）
-    const PRESETS = [
-      { group: 'ビール・泡・ワイン', items: [
-        ['生ビール', '🍺'], ['ラガービール（赤星）', '🍺'], ['ビール', '🍺'],
-        ['白スパークリングワイン', '🥂'], ['赤ワイン', '🍷'],
-      ]},
-      { group: 'ハイボール系', items: [
-        ['ハイボール', '🥃'], ['宇治抹茶ハイボール', '🥃'], ['ひげ茶ハイボール', '🥃'],
-        ['ダンダダンハイボール', '🥃'], ['ラフロイグハイボール', '🥃'], ['生姜ハイボール', '🥃'],
-        ['電気ハイボール', '🥃'], ['竹鶴ハイボール', '🥃'], ['白州ハイボール', '🥃'],
-        ['デュワーズハイボール', '🥃'], ['コークハイ', '🥃'],
-      ]},
-      { group: 'サワー・チューハイ', items: [
-        ['りんごサワー', '🍹'], ['男梅サワー', '🍹'], ['クエン酸サワー', '🍹'], ['パインサワー', '🍹'],
-        ['バイスサワー', '🍹'], ['マンゴーサワー', '🍹'], ['ぶどうサワー', '🍹'], ['ブラッドオレンジサワー', '🍹'],
-        ['マスカットサワー', '🍹'], ['ポン酢サワー', '🍹'], ['ガリチューハイ', '🍹'], ['メガガリチューハイ', '🍹'],
-        ['梅干しサワー', '🍹'], ['コボスサワー', '🍹'], ['イチゴサワー', '🍹'], ['けむりサワー', '🍹'],
-        ['ラフランスサワー', '🍹'], ['トマトサワー', '🍹'], ['レモンサワー', '🍹'], ['ジンジャーハイ／サワー', '🍹'],
-      ]},
-      { group: 'お茶割り・その他', items: [
-        ['緑茶ハイ', '🍹'], ['茶杯', '🍹'], ['ほうじ茶割り', '🍹'],
-        ['ウーロンハイ', '🍹'], ['紅茶杯', '🍹'], ['レモン杯', '🍹'],
-      ]},
-      { group: '日本酒・焼酎・スピリッツ', items: [
-        ['日本酒', '🍶'], ['麦焼酎ソーダ割り', '🧊'], ['和麦ソーダ割り', '🧊'],
-        ['翠ジン', '🍸'], ['プレーンソーダ', '🍾'], ['ラムハイ', '🍾'],
-      ]},
+    // 初期48種（整理済みマスターリスト）
+    const SEED = [
+      ['ビール・泡・ワイン', [['生ビール','🍺'],['ラガービール（赤星）','🍺'],['ビール','🍺'],['白スパークリングワイン','🥂'],['赤ワイン','🍷']]],
+      ['ハイボール系', [['ハイボール','🥃'],['宇治抹茶ハイボール','🥃'],['ひげ茶ハイボール','🥃'],['ダンダダンハイボール','🥃'],['ラフロイグハイボール','🥃'],['生姜ハイボール','🥃'],['電気ハイボール','🥃'],['竹鶴ハイボール','🥃'],['白州ハイボール','🥃'],['デュワーズハイボール','🥃'],['コークハイ','🥃']]],
+      ['サワー・チューハイ', [['りんごサワー','🍹'],['男梅サワー','🍹'],['クエン酸サワー','🍹'],['パインサワー','🍹'],['バイスサワー','🍹'],['マンゴーサワー','🍹'],['ぶどうサワー','🍹'],['ブラッドオレンジサワー','🍹'],['マスカットサワー','🍹'],['ポン酢サワー','🍹'],['ガリチューハイ','🍹'],['メガガリチューハイ','🍹'],['梅干しサワー','🍹'],['コボスサワー','🍹'],['イチゴサワー','🍹'],['けむりサワー','🍹'],['ラフランスサワー','🍹'],['トマトサワー','🍹'],['レモンサワー','🍹'],['ジンジャーハイ／サワー','🍹']]],
+      ['お茶割り・その他', [['緑茶ハイ','🍵'],['茶杯','🍵'],['ほうじ茶割り','🍵'],['ウーロンハイ','🍵'],['紅茶杯','🍵'],['レモン杯','🍵']]],
+      ['日本酒・焼酎・スピリッツ', [['日本酒','🍶'],['麦焼酎ソーダ割り','🧊'],['和麦ソーダ割り','🧊'],['翠ジン','🍸'],['プレーンソーダ','🍾'],['ラムハイ','🍾']]],
     ];
-    const PRESET_MAP = {};
-    PRESETS.forEach(g => g.items.forEach(([n, e]) => { PRESET_MAP[n] = e; }));
 
-    function buildPresets() {
-      const all = Object.keys(PRESET_MAP);
-      $('presetCount').textContent = all.length;
-      $('presetList').innerHTML = all.map(n => `<option value="${esc(n)}"></option>`).join('');
-      $('presetGroups').innerHTML = PRESETS.map(g => `
-        <div class="pgroup">
-          <h3>${esc(g.group)}（${g.items.length}）</h3>
-          <div class="pchips">
-            ${g.items.map(([n, e]) => `<button type="button" class="pchip" data-name="${esc(n)}" data-emoji="${e}">${e} ${esc(n)}</button>`).join('')}
-          </div>
-        </div>`).join('');
+    function seedList() {
+      const out = [];
+      let i = 1;
+      SEED.forEach(([cat, items]) => items.forEach(([name, emoji]) =>
+        out.push({ id: 'seed-' + (i++), name, emoji, category: cat, note: '', date: '', seed: true })));
+      return out;
     }
 
-    $('presetGroups').addEventListener('click', e => {
-      const chip = e.target.closest('.pchip');
-      if (!chip) return;
-      $('name').value = chip.dataset.name;
-      $('type').value = chip.dataset.emoji;
-      $('presetPanel').open = false;
-      $('volume').focus();
-      $('form').scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
+    const load = () => { try { const d = JSON.parse(localStorage.getItem(KEY)); return Array.isArray(d) ? d : null; } catch { return null; } };
+    const save = () => localStorage.setItem(KEY, JSON.stringify(entries));
+    let entries = load() || seedList();
+    if (!localStorage.getItem(KEY)) save();
 
-    // 名前を入力/選択したらプリセットに一致する種類を自動設定
-    $('name').addEventListener('input', () => {
-      const e = PRESET_MAP[$('name').value.trim()];
-      if (e) $('type').value = e;
-    });
-
-    function pureAlcoholGrams(volume, abv) {
-      if (!volume || !abv) return 0;
-      return volume * (abv / 100) * 0.8; // 純アルコール量(g) = 量ml × 度数/100 × 比重0.8
+    // 名前の正規化（重複判定用）
+    function norm(s) {
+      return String(s || '')
+        .normalize('NFKC')
+        .toLowerCase()
+        .replace(/[\s　]/g, '')
+        .replace(/[／/・･,、。．.\-ー―–‐()（）｢｣「」『』]/g, '');
     }
-
-    function stars(n) {
-      n = Number(n) || 0;
-      return n ? '★★★★★'.slice(0, n) : '';
-    }
-
-    function fmtDate(iso) {
-      const d = new Date(iso + 'T00:00');
-      if (isNaN(d)) return iso;
-      const w = ['日','月','火','水','木','金','土'][d.getDay()];
-      return `${d.getMonth() + 1}/${d.getDate()}(${w})`;
-    }
-
-    function render() {
-      // stats
-      const now = new Date();
-      const ym = now.toISOString().slice(0, 7);
-      const monthEntries = entries.filter(e => (e.date || '').slice(0, 7) === ym);
-      const alc = monthEntries.reduce((s, e) => s + pureAlcoholGrams(e.volume, e.abv), 0);
-      $('stTotal').textContent = entries.length;
-      $('stMonth').textContent = monthEntries.length;
-      $('stAlcohol').innerHTML = Math.round(alc) + '<span style="font-size:.7rem">g</span>';
-
-      const list = $('list');
-      if (!entries.length) {
-        list.innerHTML = '<div class="empty">まだ記録がありません。<br>最初の一杯を記録しよう 🍻</div>';
-        return;
-      }
-      const sorted = [...entries].sort((a, b) => {
-        const c = (a.date || '').localeCompare(b.date || '') || (a.id - b.id);
-        return sortNewest ? -c : c;
-      });
-      list.innerHTML = sorted.map(e => {
-        const alcG = pureAlcoholGrams(e.volume, e.abv);
-        const tags = [];
-        if (e.volume) tags.push(`${e.volume}ml`);
-        if (e.abv) tags.push(`${e.abv}%`);
-        if (alcG) tags.push(`純アルコール ${alcG.toFixed(1)}g`);
-        return `<div class="entry">
-          <div class="emoji">${e.type || '🍾'}</div>
-          <div class="body">
-            <div class="top">
-              <span class="name">${esc(e.name)}</span>
-              <button class="del" data-id="${e.id}" title="削除">✕</button>
-            </div>
-            <div class="meta">${fmtDate(e.date)} ${e.rating ? '<span class="rating">' + stars(e.rating) + '</span>' : ''}</div>
-            ${tags.length ? '<div class="tags">' + tags.map(t => '<span class="tag">' + t + '</span>').join('') + '</div>' : ''}
-            ${e.note ? '<div class="note">' + esc(e.note) + '</div>' : ''}
-          </div>
-        </div>`;
-      }).join('');
-    }
+    const findExact = n => entries.find(e => norm(e.name) === norm(n));
+    const findSimilar = n => {
+      const k = norm(n);
+      if (!k) return [];
+      return entries.filter(e => { const m = norm(e.name); return m !== k && (m.includes(k) || k.includes(m)); });
+    };
 
     function esc(s) {
       return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
+    function renderProgress() {
+      const n = entries.length;
+      const pct = Math.round(n / GOAL * 100);
+      const deg = Math.min(360, n / GOAL * 360);
+      $('pCount').textContent = n;
+      $('pPercent').textContent = Math.min(100, pct);
+      $('pRemain').textContent = Math.max(0, GOAL - n);
+      $('pFill').style.width = Math.min(100, pct) + '%';
+      $('ring').style.background = `conic-gradient(var(--accent) ${deg}deg, var(--line) ${deg}deg)`;
+      let msg = '';
+      if (n >= GOAL) msg = '🎉 100種コンプリート達成！おめでとう！';
+      else if (n >= 90) msg = '🔥 ラストスパート！あと' + (GOAL - n) + '種！';
+      else if (n >= 75) msg = '💪 残り1/4！いいペース';
+      else if (n >= 50) msg = '🥂 折り返し突破！半分達成';
+      else if (n >= 25) msg = '🍻 1/4達成！この調子';
+      $('pMsg').textContent = msg;
+    }
+
+    function renderList() {
+      const q = norm($('search').value);
+      const groups = {};
+      CAT_ORDER.forEach(c => groups[c] = []);
+      entries.forEach(e => {
+        if (q && !norm(e.name).includes(q)) return;
+        (groups[e.category] || (groups[e.category] = [])).push(e);
+      });
+      const cats = CAT_ORDER.concat(Object.keys(groups).filter(c => !CAT_ORDER.includes(c)));
+      let html = '';
+      let shown = 0;
+      cats.forEach(cat => {
+        const items = groups[cat];
+        if (!items || !items.length) return;
+        shown += items.length;
+        html += `<div class="cat"><h3><span>${CAT_EMOJI[cat] || '🍾'} ${esc(cat)}</span><span class="cnt">${items.length}</span></h3><div class="chips">`;
+        items.forEach(e => {
+          html += `<span class="chip ${e.seed ? 'seed' : 'custom'}" title="${esc(e.note)}">
+            <span>${e.emoji || '🍾'}</span><span class="nm">${esc(e.name)}</span>
+            <button class="x" data-id="${esc(e.id)}" title="削除">✕</button></span>`;
+        });
+        html += '</div></div>';
+      });
+      if (!shown) html = '<div class="cat"><div class="empty">' + ($('search').value ? '該当なし。新しい種類なら追加できます 🍶' : 'まだありません') + '</div></div>';
+      $('list').innerHTML = html;
+    }
+
+    function render() { renderProgress(); renderList(); }
+
+    // カテゴリ変更でアイコン初期化
+    $('category').addEventListener('change', () => { $('emoji').value = CAT_EMOJI[$('category').value] || '🍾'; });
+
+    function setMsg(text, cls) { const m = $('addMsg'); m.textContent = text; m.className = 'msg ' + (cls || ''); }
+
     $('form').addEventListener('submit', e => {
       e.preventDefault();
-      const entry = {
-        id: Date.now(),
-        name: $('name').value.trim(),
-        type: $('type').value,
-        date: $('date').value,
-        volume: parseFloat($('volume').value) || 0,
-        abv: parseFloat($('abv').value) || 0,
-        rating: parseInt($('rating').value) || 0,
-        note: $('note').value.trim()
-      };
-      if (!entry.name || !entry.date) return;
-      entries.push(entry);
-      save(entries);
+      const name = $('name').value.trim();
+      if (!name) return;
+      const dup = findExact(name);
+      if (dup) {
+        setMsg(`⚠ すでに登録済みです：${dup.emoji} ${dup.name}（${dup.category}）`, 'err');
+        return;
+      }
+      const sim = findSimilar(name);
+      if (sim.length) {
+        const ok = confirm(`似た名前が${sim.length}件あります：\n${sim.map(s => '・' + s.name).join('\n')}\n\n別の種類として追加しますか？`);
+        if (!ok) { setMsg('追加をキャンセルしました', 'warn'); return; }
+      }
+      entries.push({
+        id: 'c-' + Date.now(),
+        name,
+        emoji: $('emoji').value,
+        category: $('category').value,
+        note: $('note').value.trim(),
+        date: new Date().toISOString().slice(0, 10),
+        seed: false
+      });
+      save();
       render();
-      // reset (keep date)
-      const d = $('date').value;
-      e.target.reset();
-      $('date').value = d;
+      setMsg(`✅ 追加しました（${entries.length}/${GOAL}種）` + (entries.length >= GOAL ? ' 🎉コンプリート！' : ''), 'ok');
+      $('name').value = ''; $('note').value = '';
       $('name').focus();
     });
 
+    // 入力中に重複を即時ヒント
+    $('name').addEventListener('input', () => {
+      const v = $('name').value.trim();
+      if (!v) { setMsg('', ''); return; }
+      const dup = findExact(v);
+      if (dup) setMsg(`⚠ 登録済み：${dup.emoji} ${dup.name}`, 'err');
+      else {
+        const sim = findSimilar(v);
+        if (sim.length) setMsg(`💡 似た項目：${sim.map(s => s.name).join('、')}`, 'warn');
+        else setMsg('✨ 新種！追加できます', 'ok');
+      }
+    });
+
     $('list').addEventListener('click', e => {
-      const btn = e.target.closest('.del');
+      const btn = e.target.closest('.x');
       if (!btn) return;
-      const id = Number(btn.dataset.id);
-      const item = entries.find(x => x.id === id);
-      if (confirm(`「${item ? item.name : 'この記録'}」を削除しますか？`)) {
-        entries = entries.filter(x => x.id !== id);
-        save(entries);
+      const item = entries.find(x => x.id === btn.dataset.id);
+      if (item && confirm(`「${item.name}」を削除しますか？`)) {
+        entries = entries.filter(x => x.id !== btn.dataset.id);
+        save();
         render();
       }
     });
 
-    $('sortBtn').addEventListener('click', () => {
-      sortNewest = !sortNewest;
-      $('sortBtn').textContent = (sortNewest ? '新しい順' : '古い順') + ' ▾';
-      render();
-    });
+    $('search').addEventListener('input', renderList);
 
     $('exportBtn').addEventListener('click', () => {
       const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `drink-log-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `drink-collection-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
     });
-
     $('importBtn').addEventListener('click', () => $('importFile').click());
     $('importFile').addEventListener('change', e => {
       const file = e.target.files[0];
@@ -448,24 +361,28 @@
         try {
           const data = JSON.parse(reader.result);
           if (!Array.isArray(data)) throw new Error();
-          if (confirm(`${data.length}件を読み込みます。現在の記録に追加しますか？（キャンセルで置き換え）`)) {
-            entries = entries.concat(data);
-          } else {
-            entries = data;
+          let added = 0, skipped = 0;
+          const merge = confirm(`${data.length}件を読み込みます。\nOK＝現在のリストに統合（重複除外）\nキャンセル＝完全に置き換え`);
+          if (!merge) { entries = data; }
+          else {
+            data.forEach(d => {
+              if (d && d.name && !findExact(d.name)) { entries.push({ ...d, id: d.id || 'c-' + (Date.now() + added) }); added++; }
+              else skipped++;
+            });
           }
-          // ensure unique ids
-          entries = entries.map((x, i) => ({ ...x, id: x.id || Date.now() + i }));
-          save(entries);
-          render();
-        } catch {
-          alert('読み込みに失敗しました。JSONファイルを確認してください。');
-        }
+          save(); render();
+          setMsg(merge ? `統合完了：${added}件追加 / ${skipped}件は重複でスキップ` : `${data.length}件に置き換えました`, 'ok');
+        } catch { setMsg('読み込み失敗。JSONファイルを確認してください', 'err'); }
         e.target.value = '';
       };
       reader.readAsText(file);
     });
+    $('resetBtn').addEventListener('click', () => {
+      if (confirm('コレクションを初期の48種に戻します。追加した種類は削除されます。よろしいですか？')) {
+        entries = seedList(); save(); render(); setMsg('初期48種に戻しました', 'warn');
+      }
+    });
 
-    buildPresets();
     render();
   </script>
 </body>
